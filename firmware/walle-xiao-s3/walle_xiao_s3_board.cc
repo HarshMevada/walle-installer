@@ -6,7 +6,10 @@
 #include "config.h"
 #include "esp32_camera.h"
 #include "led/gpio_led.h"
+#include "mcp_server.h"
 #include "motor_controller.h"
+#include "obstacle_sensor.h"
+#include "web_console.h"
 #if WALLE_EYES_STYLE == 1
 #include "walle_gif_eyes_display.h"
 using WallEEyesDisplay = WallEGifEyesDisplay;
@@ -83,6 +86,8 @@ private:
     WallEEyesDisplay* eyes_ = nullptr;
     Esp32Camera* camera_ = nullptr;
     MotorController motors_;
+    ObstacleSensor obstacle_;
+    WebConsole web_;
     Button boot_button_;
     esp_timer_handle_t wifi_retry_timer_ = nullptr;
     int64_t config_mode_since_us_ = 0;
@@ -108,6 +113,9 @@ private:
         } else if (event == NetworkEvent::Connected || event == NetworkEvent::WifiConfigModeExit) {
             if (wifi_retry_timer_ != nullptr) {
                 esp_timer_stop(wifi_retry_timer_);
+            }
+            if (event == NetworkEvent::Connected) {
+                StartWebConsole();
             }
         }
     }
@@ -208,12 +216,14 @@ private:
         config.xclk_freq_hz = CAMERA_XCLK_FREQ_HZ;
         config.ledc_timer = LEDC_TIMER_2;
         config.ledc_channel = LEDC_CHANNEL_2;
-        config.pixel_format = PIXFORMAT_RGB565;
+        // JPEG straight from the sensor: no software encoding for AI photos,
+        // and the phone stream can send frames as they are.
+        config.pixel_format = PIXFORMAT_JPEG;
         config.frame_size = FRAMESIZE_VGA;
         config.jpeg_quality = 12;
-        config.fb_count = 1;
+        config.fb_count = 3;  // AI photo + live stream can each hold a frame
         config.fb_location = CAMERA_FB_IN_PSRAM;
-        config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+        config.grab_mode = CAMERA_GRAB_LATEST;
         camera_ = new Esp32Camera(config);
     }
 
@@ -240,6 +250,35 @@ private:
             }
         });
         motors_.RegisterMcpTools();
+        McpServer::GetInstance().AddTool(
+            "self.chitu.get_web_console",
+            "Get the web address of Chitu's phone control page (live camera, drive buttons, "
+            "auto-roam). The phone must be on the same Wi-Fi. Tell the user the address.",
+            PropertyList(), [this](const PropertyList&) -> ReturnValue {
+                std::string url = web_.Url();
+                if (url.empty()) {
+                    return std::string("{\"ok\":false,\"error\":\"Not connected to Wi-Fi yet\"}");
+                }
+                return std::string("{\"ok\":true,\"url\":\"") + url + "\"}";
+            });
+    }
+
+    void InitializeObstacleSensor() {
+        // TOF10120 shares the OLED's I2C wires (optional)
+        if (obstacle_.Initialize(display_i2c_bus_)) {
+            motors_.SetDistanceSource([this]() { return obstacle_.distance_mm(); });
+        }
+    }
+
+    void StartWebConsole() {
+        if (web_.running()) {
+            return;
+        }
+        web_.Start(&motors_, GetAudioCodec());
+        std::string url = web_.Url();
+        if (!url.empty() && display_ != nullptr) {
+            display_->ShowNotification(url, 15000);
+        }
     }
 
     void InitializeButtons() {
@@ -259,6 +298,7 @@ public:
         InitializeMotors();
         InitializeDisplayI2c();
         InitializeDisplay();
+        InitializeObstacleSensor();
         InitializeCamera();
         InitializeButtons();
         ESP_LOGI(TAG, "Wall-E board initialized");

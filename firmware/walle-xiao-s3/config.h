@@ -92,7 +92,23 @@
 
 #define MOTOR_PWM_FREQ_HZ        20000  // above hearing range, no whine
 #define MOTOR_MIN_DUTY_PERCENT   35     // below this small gear motors just hum
-#define MOTOR_MAX_DURATION_MS    5000   // safety cap per command
+#define MOTOR_MAX_DURATION_MS    10000  // safety cap per command
+
+// ---------------- Obstacle sensor (TOF10120, optional) ----------------
+// Shares the OLED I2C bus: SDA -> D4, SCL -> D10, VDD -> 3V3, GND -> GND.
+// Without it the robot still works; roaming is simply refused.
+#define TOF_I2C_ADDR             0x52
+#define TOF_I2C_SPEED_HZ         100000
+#define OBSTACLE_STOP_MM         200    // forward moves stop closer than this
+#define ROAM_AVOID_MM            320    // roaming turns away closer than this
+#define ROAM_SPEED               60     // percent
+#define ROAM_TURN_MS_MIN         350
+#define ROAM_TURN_MS_MAX         900
+#define ROAM_MAX_MINUTES         30
+
+// ---------------- Phone web console ----------------
+#define WEB_CONSOLE_PORT         80     // control page
+#define WEB_STREAM_PORT          81     // live camera (MJPEG)
 
 // ---------------- Camera (XIAO ESP32-S3 Sense, OV3660 / OV2640) ----------------
 #define CAMERA_PIN_PWDN          GPIO_NUM_NC

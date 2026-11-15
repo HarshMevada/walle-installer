@@ -1,0 +1,8 @@
+# Chitu / Wall-E robot, 8 MB flash.
+# One app slot (updates come from the web installer, not xiaozhi OTA) so the
+# assets partition can hold the English MultiNet model for the custom wake word.
+# Name,   Type, SubType, Offset,   Size
+nvs,      data, nvs,     0x9000,   0x6000,
+phy_init, data, phy,     0xf000,   0x1000,
+factory,  app,  factory, 0x10000,  0x3F0000,
+assets,   data, spiffs,  0x400000, 0x400000,

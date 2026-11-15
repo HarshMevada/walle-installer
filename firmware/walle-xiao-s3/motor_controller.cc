@@ -5,20 +5,23 @@
 
 #include <driver/ledc.h>
 #include <esp_log.h>
+#include <esp_random.h>
+#include <esp_timer.h>
 
 #include <algorithm>
 #include <string>
 
-#define TAG "WallEMotor"
+#define TAG "ChituMotor"
 
 namespace {
 constexpr ledc_mode_t kSpeedMode = LEDC_LOW_SPEED_MODE;
-constexpr ledc_timer_t kTimer = LEDC_TIMER_3;       // timer 0: backlight, 1: LED, 2: camera XCLK
+constexpr ledc_timer_t kTimer = LEDC_TIMER_3;  // timer 1: LED, 2: camera XCLK
 constexpr ledc_channel_t kChannel = LEDC_CHANNEL_5;
 constexpr ledc_timer_bit_t kResolution = LEDC_TIMER_10_BIT;
 constexpr uint32_t kMaxDuty = (1u << 10) - 1;
 constexpr int kRampSteps = 8;
 constexpr int kRampStepMs = 15;
+constexpr int kPollMs = 40;  // obstacle check interval while moving
 
 #if MOTOR_LEFT_IS_A
 constexpr gpio_num_t kLeftIn1 = MOTOR_A_IN1_GPIO;
@@ -31,10 +34,13 @@ constexpr gpio_num_t kLeftIn2 = MOTOR_B_IN2_GPIO;
 constexpr gpio_num_t kRightIn1 = MOTOR_A_IN1_GPIO;
 constexpr gpio_num_t kRightIn2 = MOTOR_A_IN2_GPIO;
 #endif
+
 // MCP tool error reply (xiaozhi builds without C++ exceptions)
-std::string ErrorJson(const char* message) {
-    return std::string("{\"ok\":false,\"error\":\"") + message + "\"}";
+std::string ErrorJson(const std::string& message) {
+    return "{\"ok\":false,\"error\":\"" + message + "\"}";
 }
+
+inline uint32_t RandRange(uint32_t lo, uint32_t hi) { return lo + esp_random() % (hi - lo + 1); }
 }  // namespace
 
 MotorController::MotorController() {}
@@ -87,12 +93,20 @@ void MotorController::Initialize() {
         ESP_LOGE(TAG, "Failed to create command queue");
         return;
     }
-    if (xTaskCreate(TaskEntry, "walle_motor", 3072, this, 5, &task_) != pdPASS) {
+    if (xTaskCreate(TaskEntry, "chitu_motor", 3584, this, 5, &task_) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create motor task");
         task_ = nullptr;
         return;
     }
     ESP_LOGI(TAG, "Motor controller ready (PWM GPIO%d @ %d Hz)", MOTOR_PWM_GPIO, MOTOR_PWM_FREQ_HZ);
+}
+
+bool MotorController::ObstacleAhead() const {
+    if (!distance_) {
+        return false;
+    }
+    int mm = distance_();
+    return mm > 0 && mm < OBSTACLE_STOP_MM;
 }
 
 bool MotorController::Drive(Dir left, Dir right, int speed, int duration_ms) {
@@ -110,7 +124,21 @@ bool MotorController::Drive(Dir left, Dir right, int speed, int duration_ms) {
     return xQueueSend(queue_, &cmd, pdMS_TO_TICKS(50)) == pdTRUE;
 }
 
+bool MotorController::DriveNamed(const std::string& direction, int speed, int duration_ms) {
+    if (direction == "forward") {
+        return Drive(Dir::kForward, Dir::kForward, speed, duration_ms);
+    } else if (direction == "backward") {
+        return Drive(Dir::kBackward, Dir::kBackward, speed, duration_ms);
+    } else if (direction == "left") {
+        return Drive(Dir::kBackward, Dir::kForward, speed, duration_ms);
+    } else if (direction == "right") {
+        return Drive(Dir::kForward, Dir::kBackward, speed, duration_ms);
+    }
+    return false;
+}
+
 void MotorController::Stop() {
+    StopRoam();
     Drive(Dir::kStop, Dir::kStop, 0, 0);
 }
 
@@ -125,17 +153,43 @@ void MotorController::TaskLoop() {
             continue;
         }
         // Keep executing as long as new commands arrive before the current one expires
-        while (true) {
+        bool have_cmd = true;
+        while (have_cmd) {
             bool is_stop = (cmd.left == Dir::kStop && cmd.right == Dir::kStop) || cmd.speed == 0 ||
                            cmd.duration_ms == 0;
-            if (is_stop) {
+            bool forward_move = cmd.left == Dir::kForward && cmd.right == Dir::kForward;
+            if (is_stop || (forward_move && ObstacleAhead())) {
+                if (!is_stop) {
+                    obstacle_stop_ = true;
+                    ESP_LOGW(TAG, "Obstacle at %d mm - not moving forward", distance_mm());
+                }
                 ApplyStop();
                 break;
             }
+            obstacle_stop_ = false;
             Apply(cmd);
-            if (xQueueReceive(queue_, &cmd, pdMS_TO_TICKS(cmd.duration_ms)) != pdTRUE) {
-                ApplyStop();  // time is up
-                break;
+
+            // Wait for the duration in small slices so obstacles stop us quickly
+            int64_t end_us = esp_timer_get_time() + (int64_t)cmd.duration_ms * 1000;
+            have_cmd = false;
+            while (true) {
+                int64_t left_ms = (end_us - esp_timer_get_time()) / 1000;
+                if (left_ms <= 0) {
+                    break;
+                }
+                if (xQueueReceive(queue_, &cmd, pdMS_TO_TICKS(std::min<int64_t>(left_ms, kPollMs))) ==
+                    pdTRUE) {
+                    have_cmd = true;  // a newer command replaces this one
+                    break;
+                }
+                if (forward_move && ObstacleAhead()) {
+                    obstacle_stop_ = true;
+                    ESP_LOGW(TAG, "Obstacle at %d mm - stopping", distance_mm());
+                    break;
+                }
+            }
+            if (!have_cmd) {
+                ApplyStop();  // time is up or obstacle
             }
         }
     }
@@ -156,6 +210,9 @@ void MotorController::SetDuty(uint32_t duty) {
 }
 
 void MotorController::RampTo(uint32_t target) {
+    if (target == current_duty_) {
+        return;  // repeated commands (phone pad, roaming) cost no time
+    }
     int32_t start = static_cast<int32_t>(current_duty_);
     int32_t delta = static_cast<int32_t>(target) - start;
     for (int i = 1; i <= kRampSteps; i++) {
@@ -190,12 +247,12 @@ void MotorController::Apply(const Command& cmd) {
         if (move_cb_) {
             move_cb_(cmd.left, cmd.right);
         }
+        ESP_LOGI(TAG, "Move: left=%s right=%s speed=%d%% duration=%dms", DirName(cmd.left),
+                 DirName(cmd.right), cmd.speed, cmd.duration_ms);
     }
     RampTo(SpeedToDuty(cmd.speed));
     speed_ = cmd.speed;
     moving_ = true;
-    ESP_LOGI(TAG, "Move: left=%s right=%s speed=%d%% duration=%dms", DirName(cmd.left),
-             DirName(cmd.right), cmd.speed, cmd.duration_ms);
 }
 
 void MotorController::ApplyStop() {
@@ -217,6 +274,94 @@ void MotorController::ApplyStop() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Roaming
+// ---------------------------------------------------------------------------
+bool MotorController::StartRoam(int minutes) {
+    if (!has_distance_sensor()) {
+        return false;
+    }
+    minutes = std::clamp(minutes, 1, ROAM_MAX_MINUTES);
+    roam_until_us_ = esp_timer_get_time() + (int64_t)minutes * 60 * 1000 * 1000;
+    if (roaming_.exchange(true)) {
+        return true;  // already roaming: just extend the time
+    }
+    if (roam_task_ != nullptr) {
+        return true;  // previous roam task is still finishing; it will see roaming_ again
+    }
+    if (xTaskCreate(RoamEntry, "chitu_roam", 3072, this, 4, &roam_task_) != pdPASS) {
+        roaming_ = false;
+        return false;
+    }
+    ESP_LOGI(TAG, "Roaming for %d min", minutes);
+    return true;
+}
+
+void MotorController::StopRoam() {
+    roaming_ = false;  // the roam task notices and exits
+}
+
+void MotorController::RoamEntry(void* arg) {
+    auto* self = static_cast<MotorController*>(arg);
+    self->RoamLoop();
+    self->roam_task_ = nullptr;
+    vTaskDelete(nullptr);
+}
+
+void MotorController::RoamLoop() {
+    // Wait in small steps so "stop" ends roaming quickly
+    auto pause = [this](int ms) {
+        for (int t = 0; t < ms && roaming_; t += 50) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+        return roaming_.load();
+    };
+
+    while (roaming_ && esp_timer_get_time() < roam_until_us_) {
+        int mm = distance_mm();
+        if (mm < 0) {
+            ESP_LOGW(TAG, "Distance sensor lost - roaming stopped");
+            break;
+        }
+        if (mm < ROAM_AVOID_MM) {
+            // Obstacle: stop, back off, turn a random amount, carry on
+            Drive(Dir::kStop, Dir::kStop, 0, 0);
+            if (!pause(250)) break;
+            Drive(Dir::kBackward, Dir::kBackward, ROAM_SPEED, 450);
+            if (!pause(500)) break;
+            bool turn_left = esp_random() & 1;
+            int turn_ms = RandRange(ROAM_TURN_MS_MIN, ROAM_TURN_MS_MAX);
+            if (turn_left) {
+                Drive(Dir::kBackward, Dir::kForward, ROAM_SPEED + 10, turn_ms);
+            } else {
+                Drive(Dir::kForward, Dir::kBackward, ROAM_SPEED + 10, turn_ms);
+            }
+            if (!pause(turn_ms + 100)) break;
+        } else {
+            // Path clear: keep rolling (re-sent so it never runs unattended for long)
+            Drive(Dir::kForward, Dir::kForward, ROAM_SPEED, 400);
+            if (!pause(150)) break;
+        }
+    }
+    bool was_roaming = roaming_.exchange(false);
+    if (was_roaming) {
+        Drive(Dir::kStop, Dir::kStop, 0, 0);  // time is up (a manual stop already stopped us)
+    }
+    ESP_LOGI(TAG, "Roaming ended");
+}
+
+std::string MotorController::StatusJson() const {
+    return std::string("{\"moving\":") + (moving() ? "true" : "false") +
+           ",\"roaming\":" + (roaming() ? "true" : "false") + ",\"left\":\"" +
+           DirName(left_dir()) + "\",\"right\":\"" + DirName(right_dir()) +
+           "\",\"speed\":" + std::to_string(speed()) +
+           ",\"distance_mm\":" + std::to_string(distance_mm()) +
+           ",\"obstacle_stop\":" + (obstacle_stop_ ? "true" : "false") + "}";
+}
+
+// ---------------------------------------------------------------------------
+// MCP tools
+// ---------------------------------------------------------------------------
 void MotorController::RegisterMcpTools() {
     auto& mcp = McpServer::GetInstance();
 
@@ -224,33 +369,27 @@ void MotorController::RegisterMcpTools() {
         "self.chitu.drive",
         "Move Chitu's tank-tread base (Chitu is this robot). "
         "direction: forward, backward, left or right (left/right spin the whole robot in place). "
-        "speed: 1-100 percent (default 80). duration_ms: how long to move, 100-5000 ms "
-        "(about 1000 ms moves a short step, a 90 degree turn is roughly 400-600 ms). "
-        "The robot stops by itself when the time is up. "
-        "Use self.chitu.run_motor when the user asks for only one wheel/motor.",
+        "speed: 1-100 percent (default 70). duration_ms: how long to move, 100-10000 ms. "
+        "About 1000 ms is a short step, 3000-6000 ms crosses part of a room, a 90 degree turn "
+        "is roughly 400-600 ms. The robot stops by itself when the time is up, and forward "
+        "moves stop automatically in front of obstacles. To wander around on its own, use "
+        "self.chitu.roam instead. Use self.chitu.run_motor for only one wheel/motor.",
         PropertyList({
             Property("direction", kPropertyTypeString, std::string("forward")),
-            Property("speed", kPropertyTypeInteger, 80, 1, 100),
+            Property("speed", kPropertyTypeInteger, 70, 1, 100),
             Property("duration_ms", kPropertyTypeInteger, 1000, 100, MOTOR_MAX_DURATION_MS),
         }),
         [this](const PropertyList& properties) -> ReturnValue {
             auto direction = properties["direction"].value<std::string>();
             int speed = properties["speed"].value<int>();
             int duration = properties["duration_ms"].value<int>();
-            Dir l, r;
-            if (direction == "forward") {
-                l = Dir::kForward; r = Dir::kForward;
-            } else if (direction == "backward") {
-                l = Dir::kBackward; r = Dir::kBackward;
-            } else if (direction == "left") {
-                l = Dir::kBackward; r = Dir::kForward;
-            } else if (direction == "right") {
-                l = Dir::kForward; r = Dir::kBackward;
-            } else {
-                return ErrorJson("Invalid direction. Use forward, backward, left or right.");
+            StopRoam();
+            if (direction == "forward" && ObstacleAhead()) {
+                return ErrorJson("Obstacle ahead at " + std::to_string(distance_mm() / 10) +
+                                 " cm, cannot move forward. Turn or back up first.");
             }
-            if (!Drive(l, r, speed, duration)) {
-                return ErrorJson("Motor command queue is unavailable.");
+            if (!DriveNamed(direction, speed, duration)) {
+                return ErrorJson("Invalid direction. Use forward, backward, left or right.");
             }
             return std::string("{\"ok\":true,\"direction\":\"") + direction +
                    "\",\"speed\":" + std::to_string(speed) +
@@ -261,11 +400,11 @@ void MotorController::RegisterMcpTools() {
         "self.chitu.run_motor",
         "Run exactly one of Chitu's wheels while the other stays stopped. "
         "Use this when the user asks for only the left or only the right motor/wheel. "
-        "motor: left or right. direction: forward or backward. speed: 1-100. duration_ms: 100-5000.",
+        "motor: left or right. direction: forward or backward. speed: 1-100. duration_ms: 100-10000.",
         PropertyList({
             Property("motor", kPropertyTypeString, std::string("left")),
             Property("direction", kPropertyTypeString, std::string("forward")),
-            Property("speed", kPropertyTypeInteger, 80, 1, 100),
+            Property("speed", kPropertyTypeInteger, 70, 1, 100),
             Property("duration_ms", kPropertyTypeInteger, 1000, 100, MOTOR_MAX_DURATION_MS),
         }),
         [this](const PropertyList& properties) -> ReturnValue {
@@ -284,6 +423,7 @@ void MotorController::RegisterMcpTools() {
             } else {
                 return ErrorJson("Invalid direction. Use forward or backward.");
             }
+            StopRoam();
             bool ok = (motor == "left") ? Drive(d, Dir::kStop, speed, duration)
                                         : Drive(Dir::kStop, d, speed, duration);
             if (!ok) {
@@ -294,16 +434,44 @@ void MotorController::RegisterMcpTools() {
                    std::to_string(duration) + "}";
         });
 
-    mcp.AddTool("self.chitu.stop", "Stop Chitu's motors immediately.", PropertyList(),
-                [this](const PropertyList&) -> ReturnValue {
+    mcp.AddTool(
+        "self.chitu.roam",
+        "Start or stop Chitu exploring on its own: it drives around, avoids obstacles with its "
+        "distance sensor and turns away from walls. Use this when the user asks Chitu to move "
+        "around, explore, wander or patrol. action: start or stop. minutes: how long to roam "
+        "(1-30, default 3). Say stop or call self.chitu.stop to end it early.",
+        PropertyList({
+            Property("action", kPropertyTypeString, std::string("start")),
+            Property("minutes", kPropertyTypeInteger, 3, 1, ROAM_MAX_MINUTES),
+        }),
+        [this](const PropertyList& properties) -> ReturnValue {
+            auto action = properties["action"].value<std::string>();
+            int minutes = properties["minutes"].value<int>();
+            if (action == "stop") {
+                Stop();
+                return std::string("{\"ok\":true,\"roaming\":false}");
+            }
+            if (action != "start") {
+                return ErrorJson("Invalid action. Use start or stop.");
+            }
+            if (!StartRoam(minutes)) {
+                return ErrorJson(
+                    "Cannot roam: the distance sensor is not connected, so it is not safe to "
+                    "drive on my own. Use self.chitu.drive for short moves instead.");
+            }
+            return std::string("{\"ok\":true,\"roaming\":true,\"minutes\":") +
+                   std::to_string(minutes) + "}";
+        });
+
+    mcp.AddTool("self.chitu.stop", "Stop Chitu's motors immediately (also ends roaming).",
+                PropertyList(), [this](const PropertyList&) -> ReturnValue {
                     Stop();
                     return true;
                 });
 
-    mcp.AddTool("self.chitu.get_status", "Get Chitu's motor status (moving, wheel directions, speed).",
-                PropertyList(), [this](const PropertyList&) -> ReturnValue {
-                    return std::string("{\"moving\":") + (moving() ? "true" : "false") +
-                           ",\"left\":\"" + DirName(left_dir()) + "\",\"right\":\"" +
-                           DirName(right_dir()) + "\",\"speed\":" + std::to_string(speed()) + "}";
-                });
+    mcp.AddTool("self.chitu.get_status",
+                "Get Chitu's motor status: moving, roaming, wheel directions, speed, and the "
+                "distance to the nearest obstacle ahead in mm (-1 = no sensor).",
+                PropertyList(),
+                [this](const PropertyList&) -> ReturnValue { return StatusJson(); });
 }
