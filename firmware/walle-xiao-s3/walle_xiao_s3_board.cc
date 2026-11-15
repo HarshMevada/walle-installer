@@ -35,9 +35,11 @@ private:
     Button boot_button_;
 
     void InitializeDisplayI2c() {
-        // I2C port 1: port 0 is used by the camera's SCCB bus
+        // I2C port 0. The esp32-camera driver always creates its SCCB bus on
+        // I2C port 1 (CONFIG_SCCB_HARDWARE_I2C_PORT1) when it is given pins, and
+        // deletes that port's bus if the camera init fails - so the OLED must NOT use port 1.
         i2c_master_bus_config_t bus_config = {
-            .i2c_port = I2C_NUM_1,
+            .i2c_port = I2C_NUM_0,
             .sda_io_num = DISPLAY_SDA_PIN,
             .scl_io_num = DISPLAY_SCL_PIN,
             .clk_source = I2C_CLK_SRC_DEFAULT,
@@ -99,7 +101,7 @@ private:
         config.pin_xclk = CAMERA_PIN_XCLK;
         config.pin_sccb_sda = CAMERA_PIN_SIOD;
         config.pin_sccb_scl = CAMERA_PIN_SIOC;
-        config.sccb_i2c_port = 0;
+        config.sccb_i2c_port = 1;  // informational: the driver uses I2C port 1 for SCCB
         config.pin_d7 = CAMERA_PIN_D7;
         config.pin_d6 = CAMERA_PIN_D6;
         config.pin_d5 = CAMERA_PIN_D5;
