@@ -131,5 +131,7 @@
 
 #endif // _BOARD_CONFIG_H_
 
-#define CAMERA_HMIRROR 0
-#define CAMERA_VFLIP   0
+// Default: rotated 180 deg. Fine-tune with the Flip / Mirror buttons in the phone console
+// (that choice is saved on the robot and survives restarts).
+#define CAMERA_HMIRROR 1
+#define CAMERA_VFLIP   1

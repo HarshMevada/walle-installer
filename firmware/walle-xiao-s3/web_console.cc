@@ -6,6 +6,7 @@
 #include "motor_controller.h"
 
 #include <esp_camera.h>
+#include "settings.h"
 #include <esp_log.h>
 #include <esp_netif.h>
 #include <esp_timer.h>
@@ -54,6 +55,7 @@ footer{color:var(--m);font-size:11px;text-align:center;margin:14px 0 4px}
 </style></head><body><main>
 <header><h1>CHI<b>TU</b></h1><span id="conn" class="pill">connecting…</span></header>
 <div class="cam"><img id="cam" alt=""><div id="cammsg" class="msg">Camera starting…</div><div id="dist" class="dist">— cm</div></div>
+<div class="modes"><button id="cFlip">Flip ↕</button><button id="cMirror">Mirror ↔</button></div>
 <div class="modes"><button id="mManual" class="act">Manual</button><button id="mAuto">Auto roam</button></div>
 <div class="pad">
 <button class="blank"></button><button data-d="forward">▲</button><button class="blank"></button>
@@ -87,9 +89,12 @@ const cam=$('cam');function startCam(){cam.src='http://'+location.hostname+':81/
 cam.onload=()=>$('cammsg').style.display='none';
 cam.onerror=()=>{$('cammsg').style.display='flex';$('cammsg').textContent='Camera unavailable – retrying…';setTimeout(startCam,3000)};
 startCam();
+let camV=0,camH=0;
+$('cFlip').onclick=()=>{camV^=1;cmd('a=cam&v='+camV)};
+$('cMirror').onclick=()=>{camH^=1;cmd('a=cam&h='+camH)};
 // status
 let fails=0,volSet=false;
-async function poll(){try{const r=await fetch('/status',{cache:'no-store'});const s=await r.json();fails=0;
+async function poll(){try{const r=await fetch('/status',{cache:'no-store'});const s=await r.json();fails=0;camV=s.cam_v|0;camH=s.cam_h|0;
  $('conn').textContent='online';$('conn').className='pill on';
  const mm=s.m.distance_mm;const d=$('dist');
  if(mm<0){d.textContent='no sensor';d.className='dist'}else{d.textContent=(mm>=2000?'>200':Math.round(mm/10))+' cm';d.className='dist'+(mm<300?' near':'')}
@@ -201,6 +206,25 @@ esp_err_t WebConsole::HandleCmd(httpd_req_t* req) {
         } else {
             self->motors_->Stop();
         }
+    } else if (strcmp(action, "cam") == 0) {
+        // Camera orientation: v=vertical flip, h=horizontal mirror (0/1), saved to NVS
+        sensor_t* s = esp_camera_sensor_get();
+        char v[4] = {0}, h[4] = {0};
+        if (s == nullptr) {
+            ok = false;
+        } else {
+            Settings settings("chitu", true);
+            if (QueryValue(query, "v", v, sizeof(v))) {
+                int on = v[0] == '1' ? 1 : 0;
+                s->set_vflip(s, on);
+                settings.SetInt("cam_vflip", on);
+            }
+            if (QueryValue(query, "h", h, sizeof(h))) {
+                int on = h[0] == '1' ? 1 : 0;
+                s->set_hmirror(s, on);
+                settings.SetInt("cam_hmirror", on);
+            }
+        }
     } else if (strcmp(action, "volume") == 0) {
         char v[8] = {0};
         if (self->codec_ != nullptr && QueryValue(query, "v", v, sizeof(v))) {
@@ -225,6 +249,8 @@ esp_err_t WebConsole::HandleStatus(httpd_req_t* req) {
     std::string json = "{\"m\":" + self->motors_->StatusJson() + ",\"rssi\":" + std::to_string(rssi) +
                        ",\"volume\":" + std::to_string(volume) +
                        ",\"camera\":" + (esp_camera_sensor_get() ? "true" : "false") +
+                       ",\"cam_v\":" + std::to_string(esp_camera_sensor_get() ? esp_camera_sensor_get()->status.vflip : 0) +
+                       ",\"cam_h\":" + std::to_string(esp_camera_sensor_get() ? esp_camera_sensor_get()->status.hmirror : 0) +
                        ",\"mic\":" + std::to_string(audio_diag::mic_rms.load()) +
                        ",\"mic_clip\":" + (audio_diag::mic_clipped > 0 ? "true" : "false") +
                        ",\"wake\":\"" + audio_diag::WakeWords() + "\"}";
