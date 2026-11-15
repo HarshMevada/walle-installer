@@ -40,6 +40,11 @@ public:
     void StopRoam();
     bool roaming() const { return roaming_.load(); }
 
+    // Dance moves in the background (non-blocking) so music can play at the same time
+    bool StartDance(int seconds);
+    void StopDance();
+    bool dancing() const { return dancing_.load(); }
+
     bool moving() const { return moving_.load(); }
     int speed() const { return speed_.load(); }
     Dir left_dir() const { return static_cast<Dir>(left_dir_.load()); }
@@ -89,4 +94,10 @@ private:
 
     static void RoamEntry(void* arg);
     void RoamLoop();
+
+    std::atomic<bool> dancing_{false};
+    std::atomic<int64_t> dance_until_us_{0};
+    TaskHandle_t dance_task_ = nullptr;
+    static void DanceEntry(void* arg);
+    void DanceLoop();
 };

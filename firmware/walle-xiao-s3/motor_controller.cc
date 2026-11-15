@@ -139,6 +139,7 @@ bool MotorController::DriveNamed(const std::string& direction, int speed, int du
 
 void MotorController::Stop() {
     StopRoam();
+    StopDance();
     Drive(Dir::kStop, Dir::kStop, 0, 0);
 }
 
@@ -350,9 +351,68 @@ void MotorController::RoamLoop() {
     ESP_LOGI(TAG, "Roaming ended");
 }
 
+bool MotorController::StartDance(int seconds) {
+    seconds = std::clamp(seconds, 3, 120);
+    StopRoam();
+    dance_until_us_ = esp_timer_get_time() + (int64_t)seconds * 1000 * 1000;
+    if (dancing_.exchange(true) || dance_task_ != nullptr) {
+        return true;  // already dancing: just extend the time
+    }
+    if (xTaskCreate(DanceEntry, "chitu_dance", 3072, this, 4, &dance_task_) != pdPASS) {
+        dancing_ = false;
+        return false;
+    }
+    ESP_LOGI(TAG, "Dancing for %d s", seconds);
+    return true;
+}
+
+void MotorController::StopDance() {
+    dancing_ = false;
+}
+
+void MotorController::DanceEntry(void* arg) {
+    auto* self = static_cast<MotorController*>(arg);
+    self->DanceLoop();
+    self->dance_task_ = nullptr;
+    vTaskDelete(nullptr);
+}
+
+void MotorController::DanceLoop() {
+    auto pause = [this](int ms) {
+        for (int t = 0; t < ms && dancing_; t += 50) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+        return dancing_.load();
+    };
+    // A short routine of wiggles, shuffles and spins, repeated until time is up.
+    // Moves are small and balanced (left = right, forward = back) so Chitu stays in place.
+    struct Step { Dir l; Dir r; int speed; int ms; };
+    static const Step kRoutine[] = {
+        {Dir::kBackward, Dir::kForward, 70, 250}, {Dir::kForward, Dir::kBackward, 70, 250},
+        {Dir::kBackward, Dir::kForward, 70, 250}, {Dir::kForward, Dir::kBackward, 70, 250},
+        {Dir::kForward, Dir::kForward, 60, 300},  {Dir::kBackward, Dir::kBackward, 60, 300},
+        {Dir::kForward, Dir::kStop, 75, 400},     {Dir::kStop, Dir::kForward, 75, 400},
+        {Dir::kBackward, Dir::kStop, 75, 400},    {Dir::kStop, Dir::kBackward, 75, 400},
+        {Dir::kForward, Dir::kBackward, 85, 900}, {Dir::kStop, Dir::kStop, 0, 250},
+        {Dir::kBackward, Dir::kForward, 85, 900}, {Dir::kStop, Dir::kStop, 0, 250},
+    };
+    while (dancing_ && esp_timer_get_time() < dance_until_us_) {
+        for (const auto& st : kRoutine) {
+            if (!dancing_ || esp_timer_get_time() >= dance_until_us_) break;
+            Drive(st.l, st.r, st.speed, st.ms);
+            if (!pause(st.ms + 30)) break;
+        }
+    }
+    if (dancing_.exchange(false)) {
+        Drive(Dir::kStop, Dir::kStop, 0, 0);
+    }
+    ESP_LOGI(TAG, "Dance ended");
+}
+
 std::string MotorController::StatusJson() const {
     return std::string("{\"moving\":") + (moving() ? "true" : "false") +
-           ",\"roaming\":" + (roaming() ? "true" : "false") + ",\"left\":\"" +
+           ",\"roaming\":" + (roaming() ? "true" : "false") +
+           ",\"dancing\":" + (dancing() ? "true" : "false") + ",\"left\":\"" +
            DirName(left_dir()) + "\",\"right\":\"" + DirName(right_dir()) +
            "\",\"speed\":" + std::to_string(speed()) +
            ",\"distance_mm\":" + std::to_string(distance_mm()) +
@@ -463,7 +523,23 @@ void MotorController::RegisterMcpTools() {
                    std::to_string(minutes) + "}";
         });
 
-    mcp.AddTool("self.chitu.stop", "Stop Chitu's motors immediately (also ends roaming).",
+    mcp.AddTool(
+        "self.chitu.dance",
+        "Make Chitu dance: wiggles, shuffles and spins in place. It runs in the background and "
+        "returns immediately, so call this FIRST and then start playing the music or singing - "
+        "Chitu keeps dancing while the music plays. seconds: how long to dance (3-120, default "
+        "30; use about the length of the song). Call self.chitu.stop to end early.",
+        PropertyList({Property("seconds", kPropertyTypeInteger, 30, 3, 120)}),
+        [this](const PropertyList& properties) -> ReturnValue {
+            int seconds = properties["seconds"].value<int>();
+            if (!StartDance(seconds)) {
+                return ErrorJson("Could not start dancing.");
+            }
+            return std::string("{\"ok\":true,\"dancing\":true,\"seconds\":") +
+                   std::to_string(seconds) + ",\"note\":\"Dancing in the background - start the music now.\"}";
+        });
+
+    mcp.AddTool("self.chitu.stop", "Stop Chitu's motors immediately (also ends roaming and dancing).",
                 PropertyList(), [this](const PropertyList&) -> ReturnValue {
                     Stop();
                     return true;
