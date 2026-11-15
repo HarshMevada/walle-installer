@@ -58,6 +58,21 @@ jobs:
           source "$IDF_PATH/export.sh"
           python scripts/build.py walle-xiao-s3 --language "$LANG_CODE" --wake-word "$WAKE_WORD"
 
+      - name: Decode crash backtrace (debug/backtrace.txt)
+        if: hashFiles('debug/backtrace.txt') != ''
+        shell: bash
+        working-directory: xiaozhi
+        run: |
+          source "$IDF_PATH/export.sh" > /dev/null
+          echo "=== decoded backtrace ==="
+          xtensa-esp32s3-elf-addr2line -pfiaC -e build/xiaozhi.elf $(cat ../debug/backtrace.txt)
+
+      - name: Save ELF (for decoding crashes)
+        uses: actions/upload-artifact@v7
+        with:
+          name: walle-elf
+          path: xiaozhi/build/xiaozhi.elf
+
       - name: Save firmware
         uses: actions/upload-artifact@v7
         with:
