@@ -2,6 +2,7 @@
 
 #include "board.h"
 #include "system_info.h"
+#include "config.h"
 
 #include <esp_heap_caps.h>
 #include <esp_log.h>
@@ -21,18 +22,9 @@ ChituCamera::ChituCamera(const camera_config_t& config) {
     }
     sensor_t* s = esp_camera_sensor_get();
     if (s != nullptr) {
-#if CONFIG_XIAOZHI_CAMERA_MIRROR_CONFIGURED
-#if CONFIG_XIAOZHI_CAMERA_HMIRROR
-        s->set_hmirror(s, 1);
-#else
-        s->set_hmirror(s, 0);
-#endif
-#if CONFIG_XIAOZHI_CAMERA_VFLIP
-        s->set_vflip(s, 1);
-#else
-        s->set_vflip(s, 0);
-#endif
-#endif
+        // Orientation set here (config.h); xiaozhi build options do not apply to this camera
+        s->set_hmirror(s, CAMERA_HMIRROR ? 1 : 0);
+        s->set_vflip(s, CAMERA_VFLIP ? 1 : 0);
         ESP_LOGI(TAG, "Camera ready (sensor PID 0x%x, JPEG)", s->id.PID);
     }
     ready_ = true;

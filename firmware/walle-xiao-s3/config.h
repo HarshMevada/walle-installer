@@ -130,3 +130,6 @@
 #define CAMERA_XCLK_FREQ_HZ      20000000
 
 #endif // _BOARD_CONFIG_H_
+
+#define CAMERA_HMIRROR 0
+#define CAMERA_VFLIP   0
