@@ -4,6 +4,8 @@
 #include "application.h"
 #include "button.h"
 #include "config.h"
+#include "audio_diag.h"
+#include "device_state_machine.h"
 #include "esp32_camera.h"
 #include "led/gpio_led.h"
 #include "mcp_server.h"
@@ -48,6 +50,27 @@ public:
         input_gain_ = MIC_GAIN;
     }
 
+    int Read(int16_t* dest, int samples) override {
+        int n = NoAudioCodecSimplexPdm::Read(dest, samples);
+        for (int i = 0; i < n; i++) {
+            int a = abs((int)dest[i]);
+            if (a > win_peak_) win_peak_ = a;
+            if (a >= 32760) win_clipped_++;
+            win_sum_sq_ += (int64_t)dest[i] * dest[i];
+        }
+        win_samples_ += n;
+        if (win_samples_ >= input_sample_rate_) {  // publish about once per second
+            audio_diag::mic_rms = (int)sqrt((double)win_sum_sq_ / win_samples_);
+            audio_diag::mic_peak = win_peak_;
+            audio_diag::mic_clipped = win_clipped_;
+            win_samples_ = 0;
+            win_sum_sq_ = 0;
+            win_peak_ = 0;
+            win_clipped_ = 0;
+        }
+        return n;
+    }
+
 protected:
     int Write(const int16_t* data, int samples) override {
         int peak = 1;
@@ -75,6 +98,10 @@ protected:
 private:
     std::vector<int16_t> boosted_;
     float gain_ = 1.0f;
+    int64_t win_sum_sq_ = 0;
+    int win_samples_ = 0;
+    int win_peak_ = 0;
+    int win_clipped_ = 0;
 };
 
 class WallEXiaoS3Board : public WifiBoard {
@@ -90,6 +117,35 @@ private:
     WebConsole web_;
     Button boot_button_;
     esp_timer_handle_t wifi_retry_timer_ = nullptr;
+    esp_timer_handle_t diag_timer_ = nullptr;
+
+    // Prints mic level + wake words every 5 s (Serial Monitor "DIAG" lines)
+    void StartDiagnostics() {
+        esp_timer_create_args_t args = {};
+        args.callback = [](void*) {
+            auto& app = Application::GetInstance();
+            // Read the wake word list on the main loop (audio objects belong to it)
+            app.Schedule([]() {
+                auto words = Application::GetInstance().GetAudioService().GetWakeWords();
+                std::string list;
+                for (auto& w : words) {
+                    list += (list.empty() ? "" : ", ") + w;
+                }
+                std::lock_guard<std::mutex> lock(audio_diag::wake_words_mutex);
+                audio_diag::wake_words = list.empty() ? "none loaded" : list;
+            });
+            int peak = audio_diag::mic_peak;
+            ESP_LOGI("DIAG", "mic level=%d peak=%d%s | wake words: %s | state: %s",
+                     audio_diag::mic_rms.load(), peak,
+                     audio_diag::mic_clipped > 0 ? " (CLIPPING - lower MIC_GAIN)" : "",
+                     audio_diag::WakeWords().c_str(),
+                     DeviceStateMachine::GetStateName(app.GetDeviceState()));
+        };
+        args.name = "diag";
+        if (esp_timer_create(&args, &diag_timer_) == ESP_OK) {
+            esp_timer_start_periodic(diag_timer_, 5ULL * 1000 * 1000);
+        }
+    }
     int64_t config_mode_since_us_ = 0;
 
     // Called on every network event (in addition to xiaozhi's own handling)
@@ -303,6 +359,7 @@ public:
         InitializeObstacleSensor();
         InitializeCamera();
         InitializeButtons();
+        StartDiagnostics();
         ESP_LOGI(TAG, "Wall-E board initialized");
     }
 

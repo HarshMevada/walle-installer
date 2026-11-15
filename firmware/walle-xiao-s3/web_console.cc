@@ -1,6 +1,7 @@
 #include "web_console.h"
 
 #include "audio_codec.h"
+#include "audio_diag.h"
 #include "config.h"
 #include "motor_controller.h"
 
@@ -61,7 +62,8 @@ footer{color:var(--m);font-size:11px;text-align:center;margin:14px 0 4px}
 </div>
 <div class="row">Speed<input id="speed" type="range" min="30" max="100" value="70"><span id="speedv">70</span></div>
 <div class="row">Volume<input id="vol" type="range" min="0" max="100" value="80"><span id="volv">80</span></div>
-<div class="info"><div>State<b id="state">—</b></div><div>Wi-Fi<b id="rssi">—</b></div><div>Obstacle<b id="obs">—</b></div></div>
+<div class="info"><div>State<b id="state">—</b></div><div>Wi-Fi<b id="rssi">—</b></div><div>Obstacle<b id="obs">—</b></div>
+<div>Mic level<b id="mic">—</b></div><div style="grid-column:span 2">Wake word<b id="wake">—</b></div></div>
 <footer>Chitu web console · same Wi-Fi only · two-way audio coming next</footer>
 </main><script>
 const $=id=>document.getElementById(id);
@@ -94,6 +96,7 @@ async function poll(){try{const r=await fetch('/status',{cache:'no-store'});cons
  $('state').textContent=s.m.roaming?'roaming':(s.m.moving?'moving':'idle');
  $('obs').textContent=s.m.obstacle_stop?'blocked':'clear';
  $('rssi').textContent=s.rssi+' dBm';
+ $('mic').textContent=s.mic+(s.mic_clip?' CLIP':'');$('wake').textContent=s.wake;
  if(!held){$('mAuto').classList.toggle('act',s.m.roaming);$('mManual').classList.toggle('act',!s.m.roaming)}
  if(!volSet&&s.volume>=0){$('vol').value=s.volume;$('volv').textContent=s.volume;volSet=true}
 }catch(e){if(++fails>2){$('conn').textContent='offline';$('conn').className='pill'}}
@@ -221,7 +224,10 @@ esp_err_t WebConsole::HandleStatus(httpd_req_t* req) {
     int volume = self->codec_ ? self->codec_->output_volume() : -1;
     std::string json = "{\"m\":" + self->motors_->StatusJson() + ",\"rssi\":" + std::to_string(rssi) +
                        ",\"volume\":" + std::to_string(volume) +
-                       ",\"camera\":" + (esp_camera_sensor_get() ? "true" : "false") + "}";
+                       ",\"camera\":" + (esp_camera_sensor_get() ? "true" : "false") +
+                       ",\"mic\":" + std::to_string(audio_diag::mic_rms.load()) +
+                       ",\"mic_clip\":" + (audio_diag::mic_clipped > 0 ? "true" : "false") +
+                       ",\"wake\":\"" + audio_diag::WakeWords() + "\"}";
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     return httpd_resp_send(req, json.c_str(), json.size());
