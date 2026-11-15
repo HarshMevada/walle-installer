@@ -221,9 +221,11 @@ private:
         config.pixel_format = PIXFORMAT_JPEG;
         config.frame_size = FRAMESIZE_VGA;
         config.jpeg_quality = 12;
-        config.fb_count = 3;  // AI photo + live stream can each hold a frame
+        config.fb_count = 2;  // AI photo + live stream can each hold a frame
         config.fb_location = CAMERA_FB_IN_PSRAM;
-        config.grab_mode = CAMERA_GRAB_LATEST;
+        // Capture only when a buffer is free. GRAB_LATEST kept the camera writing to
+        // PSRAM non-stop (cam_hal FB-OVF), competing with the speech model.
+        config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
         camera_ = new Esp32Camera(config);
     }
 
