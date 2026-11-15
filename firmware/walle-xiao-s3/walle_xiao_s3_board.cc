@@ -6,7 +6,7 @@
 #include "config.h"
 #include "audio_diag.h"
 #include "device_state_machine.h"
-#include "esp32_camera.h"
+#include "chitu_camera.h"
 #include "led/gpio_led.h"
 #include "mcp_server.h"
 #include "motor_controller.h"
@@ -127,7 +127,7 @@ private:
     esp_lcd_panel_handle_t panel_ = nullptr;
     Display* display_ = nullptr;
     WallEEyesDisplay* eyes_ = nullptr;
-    Esp32Camera* camera_ = nullptr;
+    Camera* camera_ = nullptr;
     MotorController motors_;
     ObstacleSensor obstacle_;
     WebConsole web_;
@@ -298,7 +298,7 @@ private:
         // Capture only when a buffer is free. GRAB_LATEST kept the camera writing to
         // PSRAM non-stop (cam_hal FB-OVF), competing with the speech model.
         config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
-        camera_ = new Esp32Camera(config);
+        camera_ = new ChituCamera(config);
     }
 
     void InitializeMotors() {

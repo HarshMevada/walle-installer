@@ -134,7 +134,7 @@ void WebConsole::Start(MotorController* motors, AudioCodec* codec) {
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.server_port = WEB_CONSOLE_PORT;
     cfg.ctrl_port = 32780;
-    cfg.max_open_sockets = 5;
+    cfg.max_open_sockets = 4;
     cfg.lru_purge_enable = true;
     cfg.stack_size = 6144;
     if (httpd_start(&control_server_, &cfg) != ESP_OK) {
@@ -152,7 +152,7 @@ void WebConsole::Start(MotorController* motors, AudioCodec* codec) {
     httpd_config_t scfg = HTTPD_DEFAULT_CONFIG();
     scfg.server_port = WEB_STREAM_PORT;
     scfg.ctrl_port = 32781;
-    scfg.max_open_sockets = 3;
+    scfg.max_open_sockets = 2;
     scfg.lru_purge_enable = true;
     scfg.stack_size = 6144;
     if (httpd_start(&stream_server_, &scfg) == ESP_OK) {
