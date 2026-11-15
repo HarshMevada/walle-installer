@@ -54,7 +54,6 @@
 // 0 = drawn Wall-E eyes (live shapes, status bar on top, 20+ expressions)  <- default
 // 1 = original Wall-E AI eye animations (full screen, 10 animations, +82 KB flash)
 //     Needs walle_eye_frames.c, which is NOT in this public repo (Huy Vector's artwork).
-//     Needs walle_eye_frames.c, which is NOT in this public repo (Huy Vector's artwork).
 #define WALLE_EYES_STYLE         0
 
 // ---------------- OLED (SH1106 128x64, I2C) ----------------
