@@ -47,12 +47,23 @@ public:
                     gpio_num_t dout, gpio_num_t mic_clk, gpio_num_t mic_din)
         : NoAudioCodecSimplexPdm(input_rate, output_rate, bclk, ws, dout, mic_clk, mic_din) {
         output_volume_ = DEFAULT_OUTPUT_VOLUME;  // used unless a volume was saved before
-        input_gain_ = MIC_GAIN;
+        input_gain_ = 0;  // gain is applied in Read() after removing the mic's DC offset
     }
 
     int Read(int16_t* dest, int samples) override {
         int n = NoAudioCodecSimplexPdm::Read(dest, samples);
         for (int i = 0; i < n; i++) {
+            // The Sense PDM mic has a large constant offset. A DC-blocking high-pass
+            // filter removes it; only then is the quiet voice signal amplified.
+            float x = dest[i];
+            float y = x - hp_prev_x_ + 0.995f * hp_prev_y_;
+            hp_prev_x_ = x;
+            hp_prev_y_ = y;
+            win_dc_sum_ += (int64_t)dest[i];
+            float v = y * MIC_GAIN;
+            if (v > 32767.0f) v = 32767.0f;
+            if (v < -32767.0f) v = -32767.0f;
+            dest[i] = (int16_t)v;
             int a = abs((int)dest[i]);
             if (a > win_peak_) win_peak_ = a;
             if (a >= 32760) win_clipped_++;
@@ -63,6 +74,8 @@ public:
             audio_diag::mic_rms = (int)sqrt((double)win_sum_sq_ / win_samples_);
             audio_diag::mic_peak = win_peak_;
             audio_diag::mic_clipped = win_clipped_;
+            audio_diag::mic_dc = (int)(win_dc_sum_ / win_samples_);
+            win_dc_sum_ = 0;
             win_samples_ = 0;
             win_sum_sq_ = 0;
             win_peak_ = 0;
@@ -102,6 +115,9 @@ private:
     int win_samples_ = 0;
     int win_peak_ = 0;
     int win_clipped_ = 0;
+    int64_t win_dc_sum_ = 0;
+    float hp_prev_x_ = 0.0f;
+    float hp_prev_y_ = 0.0f;
 };
 
 class WallEXiaoS3Board : public WifiBoard {
@@ -135,8 +151,8 @@ private:
                 audio_diag::wake_words = list.empty() ? "none loaded" : list;
             });
             int peak = audio_diag::mic_peak;
-            ESP_LOGI("DIAG", "mic level=%d peak=%d%s | wake words: %s | state: %s",
-                     audio_diag::mic_rms.load(), peak,
+            ESP_LOGI("DIAG", "mic level=%d peak=%d raw-offset=%d%s | wake words: %s | state: %s",
+                     audio_diag::mic_rms.load(), peak, audio_diag::mic_dc.load(),
                      audio_diag::mic_clipped > 0 ? " (CLIPPING - lower MIC_GAIN)" : "",
                      audio_diag::WakeWords().c_str(),
                      DeviceStateMachine::GetStateName(app.GetDeviceState()));

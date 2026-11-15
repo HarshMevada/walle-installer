@@ -9,6 +9,7 @@ namespace audio_diag {
 inline std::atomic<int> mic_rms{0};       // mic level after MIC_GAIN, last ~1 s
 inline std::atomic<int> mic_peak{0};      // highest sample in the last ~1 s
 inline std::atomic<int> mic_clipped{0};   // samples at full scale in the last ~1 s
+inline std::atomic<int> mic_dc{0};        // raw mic DC offset (before filtering)
 inline std::mutex wake_words_mutex;
 inline std::string wake_words = "?";      // updated on the main loop
 
