@@ -7,6 +7,7 @@
 #include <esp_log.h>
 
 #include <algorithm>
+#include <string>
 
 #define TAG "WallEMotor"
 
@@ -30,6 +31,10 @@ constexpr gpio_num_t kLeftIn2 = MOTOR_B_IN2_GPIO;
 constexpr gpio_num_t kRightIn1 = MOTOR_A_IN1_GPIO;
 constexpr gpio_num_t kRightIn2 = MOTOR_A_IN2_GPIO;
 #endif
+// MCP tool error reply (xiaozhi builds without C++ exceptions)
+std::string ErrorJson(const char* message) {
+    return std::string("{\"ok\":false,\"error\":\"") + message + "\"}";
+}
 }  // namespace
 
 MotorController::MotorController() {}
@@ -242,10 +247,10 @@ void MotorController::RegisterMcpTools() {
             } else if (direction == "right") {
                 l = Dir::kForward; r = Dir::kBackward;
             } else {
-                throw std::runtime_error("Invalid direction. Use forward, backward, left or right.");
+                return ErrorJson("Invalid direction. Use forward, backward, left or right.");
             }
             if (!Drive(l, r, speed, duration)) {
-                throw std::runtime_error("Motor command queue is unavailable.");
+                return ErrorJson("Motor command queue is unavailable.");
             }
             return std::string("{\"ok\":true,\"direction\":\"") + direction +
                    "\",\"speed\":" + std::to_string(speed) +
@@ -269,7 +274,7 @@ void MotorController::RegisterMcpTools() {
             int speed = properties["speed"].value<int>();
             int duration = properties["duration_ms"].value<int>();
             if (motor != "left" && motor != "right") {
-                throw std::runtime_error("Invalid motor. Use left or right.");
+                return ErrorJson("Invalid motor. Use left or right.");
             }
             Dir d;
             if (direction == "forward") {
@@ -277,12 +282,12 @@ void MotorController::RegisterMcpTools() {
             } else if (direction == "backward") {
                 d = Dir::kBackward;
             } else {
-                throw std::runtime_error("Invalid direction. Use forward or backward.");
+                return ErrorJson("Invalid direction. Use forward or backward.");
             }
             bool ok = (motor == "left") ? Drive(d, Dir::kStop, speed, duration)
                                         : Drive(Dir::kStop, d, speed, duration);
             if (!ok) {
-                throw std::runtime_error("Motor command queue is unavailable.");
+                return ErrorJson("Motor command queue is unavailable.");
             }
             return std::string("{\"ok\":true,\"motor\":\"") + motor + "\",\"direction\":\"" +
                    direction + "\",\"other_motor\":\"stopped\",\"duration_ms\":" +
