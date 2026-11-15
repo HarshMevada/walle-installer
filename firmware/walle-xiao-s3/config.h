@@ -30,10 +30,15 @@
 #define AUDIO_INPUT_SAMPLE_RATE  16000
 #define AUDIO_OUTPUT_SAMPLE_RATE 24000
 
-// Speaker loudness. xiaozhi's raw voice is quiet on small speakers, so samples are
-// multiplied by this factor (with a soft limiter so peaks don't crackle).
-// 1.0 = original, 2.5 = about +8 dB. Lower it if the sound distorts.
-#define SPEAKER_BOOST            2.5f
+// Speaker loudness. An automatic gain raises quiet speech up to SPEAKER_BOOST times
+// but never pushes peaks past SPEAKER_TARGET_PEAK, so loud parts stay clean.
+// 1.0 = original. Lower SPEAKER_TARGET_PEAK (e.g. 24000) if it still sounds harsh.
+#define SPEAKER_BOOST            3.0f
+#define SPEAKER_TARGET_PEAK      29000
+// Microphone gain. The Sense board's PDM mic is very quiet; samples are multiplied
+// by this (whole number). Raise to 12-16 if it doesn't wake from across the room,
+// lower to 4-6 if it hears itself or keeps triggering.
+#define MIC_GAIN                 8
 // Volume on first boot (0-100). Later changes ("set volume to 80") are remembered.
 #define DEFAULT_OUTPUT_VOLUME    100
 

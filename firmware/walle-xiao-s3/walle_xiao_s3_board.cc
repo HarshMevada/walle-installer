@@ -31,35 +31,47 @@ using WallEEyesDisplay = WallEDrawnEyesDisplay;
 
 #define TAG "WallEBoard"
 
-// Speaker codec with extra loudness: boosts samples by SPEAKER_BOOST with a soft
-// limiter, and starts at DEFAULT_OUTPUT_VOLUME on a fresh install.
-class WallESpeakerCodec : public NoAudioCodecSimplexPdm {
+// Audio codec tuned for this robot:
+//  - microphone: multiplies the quiet PDM mic by MIC_GAIN
+//  - speaker: automatic gain - boosts quiet speech up to SPEAKER_BOOST, but lowers the
+//    gain instantly when peaks would exceed SPEAKER_TARGET_PEAK (no distortion), and
+//    starts at DEFAULT_OUTPUT_VOLUME on a fresh install.
+class WallEAudioCodec : public NoAudioCodecSimplexPdm {
 public:
-    WallESpeakerCodec(int input_rate, int output_rate, gpio_num_t bclk, gpio_num_t ws,
-                      gpio_num_t dout, gpio_num_t mic_clk, gpio_num_t mic_din)
+    WallEAudioCodec(int input_rate, int output_rate, gpio_num_t bclk, gpio_num_t ws,
+                    gpio_num_t dout, gpio_num_t mic_clk, gpio_num_t mic_din)
         : NoAudioCodecSimplexPdm(input_rate, output_rate, bclk, ws, dout, mic_clk, mic_din) {
         output_volume_ = DEFAULT_OUTPUT_VOLUME;  // used unless a volume was saved before
+        input_gain_ = MIC_GAIN;
     }
 
 protected:
     int Write(const int16_t* data, int samples) override {
-        constexpr float kMax = 32767.0f;
-        constexpr float kKnee = 24000.0f;  // linear below this, smooth limiting above
+        int peak = 1;
+        for (int i = 0; i < samples; i++) {
+            int a = abs((int)data[i]);
+            if (a > peak) peak = a;
+        }
+        float wanted = fminf(SPEAKER_BOOST, (float)SPEAKER_TARGET_PEAK / peak);
+        float start = gain_;
+        // fast attack (turn down at once), slow release (turn up gently)
+        float end = (wanted < gain_) ? wanted : gain_ + (wanted - gain_) * 0.08f;
+
         boosted_.resize(samples);
         for (int i = 0; i < samples; i++) {
-            float x = data[i] * SPEAKER_BOOST;
-            float a = fabsf(x);
-            if (a > kKnee) {
-                a = kKnee + (kMax - kKnee) * tanhf((a - kKnee) / (kMax - kKnee));
-                x = (x < 0) ? -a : a;
-            }
-            boosted_[i] = static_cast<int16_t>(x);
+            float g = start + (end - start) * i / samples;  // smooth ramp, no clicks
+            float x = data[i] * g;
+            if (x > 32767.0f) x = 32767.0f;
+            if (x < -32767.0f) x = -32767.0f;
+            boosted_[i] = (int16_t)x;
         }
+        gain_ = end;
         return NoAudioCodecSimplexPdm::Write(boosted_.data(), samples);
     }
 
 private:
     std::vector<int16_t> boosted_;
+    float gain_ = 1.0f;
 };
 
 class WallEXiaoS3Board : public WifiBoard {
@@ -258,7 +270,7 @@ public:
     }
 
     AudioCodec* GetAudioCodec() override {
-        static WallESpeakerCodec audio_codec(
+        static WallEAudioCodec audio_codec(
             AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE, AUDIO_I2S_SPK_GPIO_BCLK,
             AUDIO_I2S_SPK_GPIO_LRCK, AUDIO_I2S_SPK_GPIO_DOUT, AUDIO_PDM_MIC_GPIO_CLK,
             AUDIO_PDM_MIC_GPIO_DATA);
