@@ -30,6 +30,13 @@
 #define AUDIO_INPUT_SAMPLE_RATE  16000
 #define AUDIO_OUTPUT_SAMPLE_RATE 24000
 
+// Speaker loudness. xiaozhi's raw voice is quiet on small speakers, so samples are
+// multiplied by this factor (with a soft limiter so peaks don't crackle).
+// 1.0 = original, 2.5 = about +8 dB. Lower it if the sound distorts.
+#define SPEAKER_BOOST            2.5f
+// Volume on first boot (0-100). Later changes ("set volume to 80") are remembered.
+#define DEFAULT_OUTPUT_VOLUME    100
+
 // MAX98357 I2S amplifier
 #define AUDIO_I2S_SPK_GPIO_BCLK  GPIO_NUM_1   // D0
 #define AUDIO_I2S_SPK_GPIO_LRCK  GPIO_NUM_2   // D1
@@ -47,6 +54,7 @@
 // 0 = drawn Wall-E eyes (live shapes, status bar on top, 20+ expressions)  <- default
 // 1 = original Wall-E AI eye animations (full screen, 10 animations, +82 KB flash)
 //     Needs walle_eye_frames.c, which is NOT in this public repo (Huy Vector's artwork).
+//     Needs walle_eye_frames.c, which is NOT in this public repo (Huy Vector's artwork).
 #define WALLE_EYES_STYLE         0
 
 // ---------------- OLED (SH1106 128x64, I2C) ----------------
@@ -56,8 +64,14 @@
 #define DISPLAY_WIDTH            128
 #define DISPLAY_HEIGHT           64
 // Flip these if the picture is upside down / mirrored on your mounting
-#define DISPLAY_MIRROR_X         true
-#define DISPLAY_MIRROR_Y         true
+#define DISPLAY_MIRROR_X         false
+#define DISPLAY_MIRROR_Y         false
+
+// ---------------- Wi-Fi ----------------
+// If the saved Wi-Fi can't be reached at power-up, xiaozhi falls back to the setup
+// hotspot and would stay there forever. With a saved network, restart and try again
+// after this many seconds in setup mode (unless a phone is connected to the hotspot).
+#define WIFI_RETRY_SECONDS       180
 
 // ---------------- Motors (TB6612FNG) ----------------
 #define MOTOR_A_IN1_GPIO         GPIO_NUM_4   // D3  AIN1

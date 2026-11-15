@@ -15,13 +15,52 @@ using WallEEyesDisplay = WallEGifEyesDisplay;
 using WallEEyesDisplay = WallEDrawnEyesDisplay;
 #endif
 
+#include <ssid_manager.h>
+
 #include <driver/i2c_master.h>
+#include <esp_system.h>
+#include <esp_timer.h>
+#include <esp_wifi.h>
+
+#include <cmath>
+#include <vector>
 #include <esp_lcd_panel_ops.h>
 #include <esp_lcd_panel_vendor.h>
 #include <esp_lcd_panel_sh1106.h>
 #include <esp_log.h>
 
 #define TAG "WallEBoard"
+
+// Speaker codec with extra loudness: boosts samples by SPEAKER_BOOST with a soft
+// limiter, and starts at DEFAULT_OUTPUT_VOLUME on a fresh install.
+class WallESpeakerCodec : public NoAudioCodecSimplexPdm {
+public:
+    WallESpeakerCodec(int input_rate, int output_rate, gpio_num_t bclk, gpio_num_t ws,
+                      gpio_num_t dout, gpio_num_t mic_clk, gpio_num_t mic_din)
+        : NoAudioCodecSimplexPdm(input_rate, output_rate, bclk, ws, dout, mic_clk, mic_din) {
+        output_volume_ = DEFAULT_OUTPUT_VOLUME;  // used unless a volume was saved before
+    }
+
+protected:
+    int Write(const int16_t* data, int samples) override {
+        constexpr float kMax = 32767.0f;
+        constexpr float kKnee = 24000.0f;  // linear below this, smooth limiting above
+        boosted_.resize(samples);
+        for (int i = 0; i < samples; i++) {
+            float x = data[i] * SPEAKER_BOOST;
+            float a = fabsf(x);
+            if (a > kKnee) {
+                a = kKnee + (kMax - kKnee) * tanhf((a - kKnee) / (kMax - kKnee));
+                x = (x < 0) ? -a : a;
+            }
+            boosted_[i] = static_cast<int16_t>(x);
+        }
+        return NoAudioCodecSimplexPdm::Write(boosted_.data(), samples);
+    }
+
+private:
+    std::vector<int16_t> boosted_;
+};
 
 class WallEXiaoS3Board : public WifiBoard {
 private:
@@ -33,6 +72,47 @@ private:
     Esp32Camera* camera_ = nullptr;
     MotorController motors_;
     Button boot_button_;
+    esp_timer_handle_t wifi_retry_timer_ = nullptr;
+    int64_t config_mode_since_us_ = 0;
+
+    // Called on every network event (in addition to xiaozhi's own handling)
+    void HandleWifiRetry(NetworkEvent event) {
+        if (event == NetworkEvent::WifiConfigModeEnter) {
+            if (SsidManager::GetInstance().GetSsidList().empty()) {
+                return;  // first setup: no saved Wi-Fi, stay in setup mode
+            }
+            config_mode_since_us_ = esp_timer_get_time();
+            if (wifi_retry_timer_ == nullptr) {
+                esp_timer_create_args_t args = {};
+                args.callback = WifiRetryCheck;
+                args.arg = this;
+                args.name = "wifi_retry";
+                esp_timer_create(&args, &wifi_retry_timer_);
+            }
+            esp_timer_stop(wifi_retry_timer_);
+            esp_timer_start_periodic(wifi_retry_timer_, 15ULL * 1000 * 1000);
+            ESP_LOGI(TAG, "Saved Wi-Fi exists: will retry it in %d s unless the setup page is used",
+                     WIFI_RETRY_SECONDS);
+        } else if (event == NetworkEvent::Connected || event == NetworkEvent::WifiConfigModeExit) {
+            if (wifi_retry_timer_ != nullptr) {
+                esp_timer_stop(wifi_retry_timer_);
+            }
+        }
+    }
+
+    static void WifiRetryCheck(void* arg) {
+        auto* self = static_cast<WallEXiaoS3Board*>(arg);
+        int64_t now = esp_timer_get_time();
+        wifi_sta_list_t stations = {};
+        if (esp_wifi_ap_get_sta_list(&stations) == ESP_OK && stations.num > 0) {
+            self->config_mode_since_us_ = now;  // someone is on the setup hotspot: wait
+            return;
+        }
+        if (now - self->config_mode_since_us_ >= (int64_t)WIFI_RETRY_SECONDS * 1000 * 1000) {
+            ESP_LOGW(TAG, "Still in Wi-Fi setup mode with a saved network - restarting to retry");
+            esp_restart();
+        }
+    }
 
     void InitializeDisplayI2c() {
         // I2C port 0. The esp32-camera driver always creates its SCCB bus on
@@ -178,11 +258,21 @@ public:
     }
 
     AudioCodec* GetAudioCodec() override {
-        static NoAudioCodecSimplexPdm audio_codec(
+        static WallESpeakerCodec audio_codec(
             AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE, AUDIO_I2S_SPK_GPIO_BCLK,
             AUDIO_I2S_SPK_GPIO_LRCK, AUDIO_I2S_SPK_GPIO_DOUT, AUDIO_PDM_MIC_GPIO_CLK,
             AUDIO_PDM_MIC_GPIO_DATA);
         return &audio_codec;
+    }
+
+    void SetNetworkEventCallback(NetworkEventCallback callback) override {
+        WifiBoard::SetNetworkEventCallback(
+            [this, callback](NetworkEvent event, const std::string& data) {
+                HandleWifiRetry(event);
+                if (callback) {
+                    callback(event, data);
+                }
+            });
     }
 
     Display* GetDisplay() override { return display_; }
