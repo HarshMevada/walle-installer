@@ -45,6 +45,14 @@
     .num { font:12px ui-monospace, Consolas, monospace; color:var(--accent); }
     a { color:var(--eye); }
     .wiring img { width:100%; border-radius:12px; border:1px solid var(--line); background:#fff; }
+    .tests { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
+    .test { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; display:flex; flex-direction:column; gap:8px; }
+    .test > b { font-size:17px; }
+    .test p { margin:0; font-size:14px; color:var(--muted); }
+    .test .pass { color:#9be59b; }
+    .install.small { padding:11px 14px; font-size:15px; box-shadow:none; margin-top:auto; }
+    .note { background:#2a2410; border:1px solid #5a4a14; color:#ffe2a8; border-radius:12px; padding:12px 14px; font-size:14px; margin-bottom:14px; }
+    @media (max-width:760px) { .tests { grid-template-columns:1fr; } }
     footer { margin-top:40px; font-size:12px; color:var(--muted); text-align:center; }
     @media (max-width:760px) { .hero, .steps { grid-template-columns:1fr; } .face { width:220px; } }
     @media (prefers-reduced-motion:reduce) { .eye { animation:none; } }
@@ -75,6 +83,54 @@
     </div>
     <div class="face" aria-hidden="true"><div class="screen"><div class="eye"></div><div class="eye"></div></div></div>
   </section>
+
+  <h2>Hardware tests (one part at a time)</h2>
+  <div class="note">Use these when something doesn't work. Each test is a tiny program that checks <b>one part only</b>.
+    Install a test, then in the same window click <b>Logs &amp; Console</b> to read what it reports.
+    When all four pass, install the Wall-E firmware above again.</div>
+  <div class="tests">
+    <div class="test">
+      <div class="num">TEST 1</div><b>Screen (OLED)</b>
+      <p>SDA → D4 · SCL → D10 · VCC → 3V3</p>
+      <p class="pass">PASS: the log shows "Found device at 0x3C" and the screen shows text and blinking eyes.</p>
+      <esp-web-install-button manifest="tests/01_OLED_Test.json">
+        <button class="install small" slot="activate">Install test 1 <span>→</span></button>
+        <span class="warn" slot="unsupported">Use Chrome or Edge on a computer.</span>
+        <span class="warn" slot="not-allowed">Open this page over https.</span>
+      </esp-web-install-button>
+    </div>
+    <div class="test">
+      <div class="num">TEST 2</div><b>Motors (TB6612)</b>
+      <p>AIN1 → D3 · AIN2 → D6 · BIN1 → D7 · BIN2 → D2 · PWMA + PWMB → D9 · STBY → 3V3. Lift the robot first!</p>
+      <p class="pass">PASS: each wheel turns as the log describes: left fwd/back, right fwd/back, both, spin.</p>
+      <esp-web-install-button manifest="tests/02_Motor_Test.json">
+        <button class="install small" slot="activate">Install test 2 <span>→</span></button>
+        <span class="warn" slot="unsupported">Use Chrome or Edge on a computer.</span>
+        <span class="warn" slot="not-allowed">Open this page over https.</span>
+      </esp-web-install-button>
+    </div>
+    <div class="test">
+      <div class="num">TEST 3</div><b>Speaker (MAX98357)</b>
+      <p>BCLK → D0 · LRC → D1 · DIN → D5 · VIN → 5V</p>
+      <p class="pass">PASS: three beeps (low, mid, high) and a short melody, repeating.</p>
+      <esp-web-install-button manifest="tests/03_Speaker_Test.json">
+        <button class="install small" slot="activate">Install test 3 <span>→</span></button>
+        <span class="warn" slot="unsupported">Use Chrome or Edge on a computer.</span>
+        <span class="warn" slot="not-allowed">Open this page over https.</span>
+      </esp-web-install-button>
+    </div>
+    <div class="test">
+      <div class="num">TEST 4</div><b>Microphone (built-in)</b>
+      <p>Sense expansion board attached · nothing wired to D11/D12</p>
+      <p class="pass">PASS: the level number stays low when quiet and jumps when you talk or clap.</p>
+      <esp-web-install-button manifest="tests/04_Mic_Test.json">
+        <button class="install small" slot="activate">Install test 4 <span>→</span></button>
+        <span class="warn" slot="unsupported">Use Chrome or Edge on a computer.</span>
+        <span class="warn" slot="not-allowed">Open this page over https.</span>
+      </esp-web-install-button>
+    </div>
+  </div>
+  <p class="hint">The Arduino IDE versions of these tests are in the <a href="https://github.com/HarshMevada/walle-installer/tree/main/tests" target="_blank" rel="noopener">tests folder on GitHub</a>.</p>
 
   <h2>After installing</h2>
   <div class="steps">

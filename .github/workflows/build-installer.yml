@@ -65,9 +65,49 @@ jobs:
           path: xiaozhi/build/merged-binary.bin
           if-no-files-found: error
 
+  tests:
+    name: Build hardware test sketches
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v7
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 core and U8g2
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli lib install U8g2
+
+      - name: Compile tests
+        shell: bash
+        run: |
+          set -e
+          FQBN="esp32:esp32:XIAO_ESP32S3:USBMode=hwcdc,CDCOnBoot=default,PSRAM=opi"
+          mkdir -p out
+          for dir in tests/*/; do
+            name=$(basename "$dir")
+            echo "::group::$name"
+            arduino-cli compile --fqbn "$FQBN" --warnings default --export-binaries --output-dir "build/$name" "$dir"
+            cp "build/$name/$name.ino.merged.bin" "out/$name.bin"
+            echo "::endgroup::"
+          done
+          ls -la out
+
+      - name: Save test binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: walle-tests
+          path: out/*.bin
+          if-no-files-found: error
+
   site:
     name: Prepare installer page
-    needs: firmware
+    needs: [firmware, tests]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout this repo
@@ -78,6 +118,12 @@ jobs:
         with:
           name: walle-firmware
           path: site/firmware
+
+      - name: Get test binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: walle-tests
+          path: site/tests
 
       - name: Write manifest and version
         shell: bash
@@ -99,6 +145,11 @@ jobs:
           }
           EOF
           sed -i "s/__VERSION__/$VERSION/g" site/index.html
+          for bin in site/tests/*.bin; do
+            name=$(basename "$bin" .bin)
+            printf '{"name":"Wall-E %s","version":"%s","new_install_prompt_erase":false,"builds":[{"chipFamily":"ESP32-S3","parts":[{"path":"%s.bin","offset":0}]}]}\n' "$name" "$VERSION" "$name" > "site/tests/$name.json"
+          done
+          ls -la site/tests
           ls -la site site/firmware
 
       - name: Package page
