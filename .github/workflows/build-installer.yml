@@ -1,0 +1,119 @@
+# Builds the Wall-E firmware in the cloud and publishes the web installer on GitHub Pages.
+# Runs automatically on every change, or manually from the Actions tab
+# (there you can pick another language / wake word).
+name: Build Wall-E web installer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      language:
+        description: "Language (en-US, hi-IN, ...)"
+        default: "en-US"
+      wake_word:
+        description: "Wake word (hiesp, nihaoxiaozhi, ...)"
+        default: "hiesp"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  # xiaozhi-esp32 version this Wall-E board was written and tested against
+  XIAOZHI_COMMIT: 1b7644a6fba2b025ed36b4ac6309f122cc3cea14
+
+jobs:
+  firmware:
+    name: Build firmware
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:release-v6.1
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v7
+
+      - name: Get xiaozhi and add the Wall-E board
+        shell: bash
+        run: |
+          git config --global --add safe.directory '*'
+          git clone https://github.com/78/xiaozhi-esp32.git xiaozhi
+          cd xiaozhi
+          git checkout "$XIAOZHI_COMMIT"
+          cp -r ../firmware/walle-xiao-s3 main/boards/
+          git apply ../firmware/walle-board-registration.patch
+
+      - name: Build
+        shell: bash
+        working-directory: xiaozhi
+        env:
+          LANG_CODE: ${{ inputs.language || 'en-US' }}
+          WAKE_WORD: ${{ inputs.wake_word || 'hiesp' }}
+        run: |
+          source "$IDF_PATH/export.sh"
+          python scripts/build.py walle-xiao-s3 --language "$LANG_CODE" --wake-word "$WAKE_WORD"
+
+      - name: Save firmware
+        uses: actions/upload-artifact@v7
+        with:
+          name: walle-firmware
+          path: xiaozhi/build/merged-binary.bin
+          if-no-files-found: error
+
+  site:
+    name: Prepare installer page
+    needs: firmware
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v7
+
+      - name: Get firmware
+        uses: actions/download-artifact@v8
+        with:
+          name: walle-firmware
+          path: site/firmware
+
+      - name: Write manifest and version
+        shell: bash
+        run: |
+          mv site/firmware/merged-binary.bin site/firmware/walle.bin
+          VERSION="$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}"
+          cat > site/manifest.json <<EOF
+          {
+            "name": "Wall-E Robot",
+            "version": "$VERSION",
+            "new_install_prompt_erase": true,
+            "builds": [
+              {
+                "chipFamily": "ESP32-S3",
+                "improv": false,
+                "parts": [{ "path": "firmware/walle.bin", "offset": 0 }]
+              }
+            ]
+          }
+          EOF
+          sed -i "s/__VERSION__/$VERSION/g" site/index.html
+          ls -la site site/firmware
+
+      - name: Package page
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    name: Publish to GitHub Pages
+    needs: site
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

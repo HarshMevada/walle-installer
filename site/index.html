@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wall-E Robot — Web Installer</title>
+  <meta name="description" content="Install the Wall-E robot firmware on a XIAO ESP32-S3 Sense directly from your browser.">
+  <meta name="theme-color" content="#0e1a1f">
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+  <style>
+    :root { --bg:#0e1a1f; --panel:#152830; --line:#24414c; --text:#e8f1f2; --muted:#93aab0; --eye:#5ee7f7; --accent:#ffb000; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:radial-gradient(circle at 75% 10%, #173640 0, var(--bg) 55%); color:var(--text);
+           font:16px/1.55 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; min-height:100vh; }
+    main { max-width:920px; margin:0 auto; padding:28px 22px 40px; }
+    header { display:flex; justify-content:space-between; align-items:center; margin-bottom:34px; }
+    .brand { font-weight:800; letter-spacing:.14em; font-size:14px; }
+    .brand b { color:var(--eye); }
+    .ver { font:12px ui-monospace, Consolas, monospace; color:var(--muted); border:1px solid var(--line); padding:4px 10px; border-radius:99px; }
+    .hero { display:grid; grid-template-columns:1.1fr .9fr; gap:34px; align-items:center; }
+    h1 { font-size:clamp(34px,6vw,54px); line-height:1.02; margin:0 0 14px; letter-spacing:-.02em; }
+    h1 em { font-style:normal; color:var(--eye); }
+    .lede { color:var(--muted); margin:0 0 26px; max-width:460px; }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:20px; }
+    esp-web-install-button { display:block; }
+    .install { width:100%; padding:18px 20px; font-weight:700; font-size:18px; font-family:inherit; color:#10161a; background:var(--eye);
+               border:0; border-radius:12px; cursor:pointer; display:flex; justify-content:space-between; align-items:center;
+               box-shadow:0 8px 30px rgba(94,231,247,.25); transition:transform .12s; }
+    .install:hover { transform:translateY(-2px); }
+    .warn { display:block; padding:14px; border-radius:10px; background:#3a2410; color:#ffd9a8; font-size:14px; }
+    .hint { font-size:13px; color:var(--muted); margin:12px 2px 0; }
+    /* little robot face */
+    .face { justify-self:center; width:270px; aspect-ratio:1.25; background:#2b3a3f; border:3px solid #47575c; border-radius:22px;
+            padding:18px; box-shadow:0 30px 60px rgba(0,0,0,.45); transform:rotate(-2deg); }
+    .screen { height:100%; background:#050a0c; border-radius:12px; display:flex; justify-content:center; align-items:center; gap:28px; }
+    .eye { width:62px; height:58px; background:var(--eye); border-radius:14px; box-shadow:0 0 18px rgba(94,231,247,.55);
+           animation:blink 5s infinite, look 9s infinite ease-in-out; }
+    @keyframes blink { 0%,46%,50%,100% { transform:scaleY(1); } 48% { transform:scaleY(.08); } }
+    @keyframes look { 0%,30%,100% { translate:0 0; } 40%,55% { translate:-10px -4px; } 65%,80% { translate:10px 0; } }
+    h2 { font-size:22px; margin:44px 0 14px; }
+    .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+    .step { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; }
+    .step > b { display:block; margin-bottom:4px; }
+    .step span { font-size:14px; color:var(--muted); }
+    .num { font:12px ui-monospace, Consolas, monospace; color:var(--accent); }
+    a { color:var(--eye); }
+    .wiring img { width:100%; border-radius:12px; border:1px solid var(--line); background:#fff; }
+    footer { margin-top:40px; font-size:12px; color:var(--muted); text-align:center; }
+    @media (max-width:760px) { .hero, .steps { grid-template-columns:1fr; } .face { width:220px; } }
+    @media (prefers-reduced-motion:reduce) { .eye { animation:none; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">WALL·E <b>ROBOT</b></div>
+    <div class="ver">firmware __VERSION__</div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <h1>Plug in USB.<br>Wake up <em>Wall-E.</em></h1>
+      <p class="lede">Installs the Wall-E firmware on a Seeed XIAO ESP32-S3 Sense straight from your browser.
+        No software to install.</p>
+
+      <div class="card">
+        <esp-web-install-button manifest="manifest.json">
+          <button class="install" slot="activate">Connect &amp; install Wall-E <span>→</span></button>
+          <span class="warn" slot="unsupported">This browser can't flash devices. Open this page in <b>Chrome</b> or <b>Edge</b> on a computer.</span>
+          <span class="warn" slot="not-allowed">Open this page over https (the github.io link) to allow USB access.</span>
+        </esp-web-install-button>
+        <p class="hint">Use a USB <b>data</b> cable. If no port shows up: hold <b>BOOT</b>, tap <b>RESET</b>, release <b>BOOT</b>, and try again.
+          Choose the port called “USB JTAG/serial debug unit”. Installing erases the saved Wi-Fi.</p>
+      </div>
+    </div>
+    <div class="face" aria-hidden="true"><div class="screen"><div class="eye"></div><div class="eye"></div></div></div>
+  </section>
+
+  <h2>After installing</h2>
+  <div class="steps">
+    <div class="step"><div class="num">01</div><b>Connect Wi-Fi</b>
+      <span>Join the <b>Xiaozhi-XXXX</b> hotspot from your phone, pick your 2.4 GHz Wi-Fi and enter the password.</span></div>
+    <div class="step"><div class="num">02</div><b>Activate</b>
+      <span>Wall-E shows a 6-digit code. Enter it at <a href="https://xiaozhi.me" target="_blank" rel="noopener">xiaozhi.me</a> → Add device.</span></div>
+    <div class="step"><div class="num">03</div><b>Make it Wall-E</b>
+      <span>In the xiaozhi.me console set the name <b>Wall-E</b>, a voice, and a short character description. Then say “Hi ESP”!</span></div>
+  </div>
+
+  <h2>Try saying</h2>
+  <div class="steps">
+    <div class="step"><b>“Move forward for one second”</b><span>drives the tank treads</span></div>
+    <div class="step"><b>“Turn left” / “Stop”</b><span>spins in place, eyes follow</span></div>
+    <div class="step"><b>“What do you see?”</b><span>takes a photo and describes it</span></div>
+  </div>
+
+  <h2>Wiring</h2>
+  <a class="wiring" href="img/wiring.png" target="_blank"><img src="img/wiring.png" alt="Wall-E wiring diagram" loading="lazy"></a>
+
+  <footer>Built on the open-source xiaozhi-esp32 project · ESP Web Tools by ESPHome</footer>
+</main>
+</body>
+</html>
