@@ -221,13 +221,13 @@ void MotorController::RegisterMcpTools() {
     auto& mcp = McpServer::GetInstance();
 
     mcp.AddTool(
-        "self.wall_e.drive",
-        "Move Wall-E's tank-tread base. Your name is Wall-E; always call yourself Wall-E. "
+        "self.chitu.drive",
+        "Move Chitu's tank-tread base (Chitu is this robot). "
         "direction: forward, backward, left or right (left/right spin the whole robot in place). "
         "speed: 1-100 percent (default 80). duration_ms: how long to move, 100-5000 ms "
         "(about 1000 ms moves a short step, a 90 degree turn is roughly 400-600 ms). "
         "The robot stops by itself when the time is up. "
-        "Use self.wall_e.run_motor when the user asks for only one wheel/motor.",
+        "Use self.chitu.run_motor when the user asks for only one wheel/motor.",
         PropertyList({
             Property("direction", kPropertyTypeString, std::string("forward")),
             Property("speed", kPropertyTypeInteger, 80, 1, 100),
@@ -258,8 +258,8 @@ void MotorController::RegisterMcpTools() {
         });
 
     mcp.AddTool(
-        "self.wall_e.run_motor",
-        "Run exactly one of Wall-E's wheels while the other stays stopped. "
+        "self.chitu.run_motor",
+        "Run exactly one of Chitu's wheels while the other stays stopped. "
         "Use this when the user asks for only the left or only the right motor/wheel. "
         "motor: left or right. direction: forward or backward. speed: 1-100. duration_ms: 100-5000.",
         PropertyList({
@@ -294,13 +294,13 @@ void MotorController::RegisterMcpTools() {
                    std::to_string(duration) + "}";
         });
 
-    mcp.AddTool("self.wall_e.stop", "Stop Wall-E's motors immediately.", PropertyList(),
+    mcp.AddTool("self.chitu.stop", "Stop Chitu's motors immediately.", PropertyList(),
                 [this](const PropertyList&) -> ReturnValue {
                     Stop();
                     return true;
                 });
 
-    mcp.AddTool("self.wall_e.get_status", "Get Wall-E's motor status (moving, wheel directions, speed).",
+    mcp.AddTool("self.chitu.get_status", "Get Chitu's motor status (moving, wheel directions, speed).",
                 PropertyList(), [this](const PropertyList&) -> ReturnValue {
                     return std::string("{\"moving\":") + (moving() ? "true" : "false") +
                            ",\"left\":\"" + DirName(left_dir()) + "\",\"right\":\"" +
