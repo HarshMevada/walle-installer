@@ -13,7 +13,7 @@ on:
         default: "en-US"
       wake_word:
         description: "Wake word: custom:<phrase> (e.g. custom:hello chitu) or a model (hiesp, ...)"
-        default: "custom:hello chitu"
+        default: "custom:hello"
 
 permissions:
   contents: read
@@ -53,7 +53,7 @@ jobs:
         working-directory: xiaozhi
         env:
           LANG_CODE: ${{ inputs.language || 'en-US' }}
-          WAKE_WORD: ${{ inputs.wake_word || 'custom:hello chitu' }}
+          WAKE_WORD: ${{ inputs.wake_word || 'custom:hello' }}
         run: |
           source "$IDF_PATH/export.sh"
           python scripts/build.py walle-xiao-s3 --language "$LANG_CODE" --wake-word "$WAKE_WORD"
