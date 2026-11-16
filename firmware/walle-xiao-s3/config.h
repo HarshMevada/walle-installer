@@ -2,7 +2,7 @@
 #define _BOARD_CONFIG_H_
 
 // =====================================================================
-//  Wall-E robot on Seeed XIAO ESP32-S3 Sense
+//  Chitu robot on Seeed XIAO ESP32-S3 Sense
 //
 //  XIAO pin -> GPIO map (for reference)
 //    D0=GPIO1  D1=GPIO2  D2=GPIO3  D3=GPIO4  D4=GPIO5  D5=GPIO6
@@ -54,12 +54,6 @@
 // ---------------- Buttons / LED ----------------
 #define BOOT_BUTTON_GPIO         GPIO_NUM_0
 #define BUILTIN_LED_GPIO         GPIO_NUM_21  // orange user LED, active low
-
-// ---------------- Eye style ----------------
-// 0 = drawn Wall-E eyes (live shapes, status bar on top, 20+ expressions)  <- default
-// 1 = original Wall-E AI eye animations (full screen, 10 animations, +82 KB flash)
-//     Needs walle_eye_frames.c, which is NOT in this public repo (Huy Vector's artwork).
-#define WALLE_EYES_STYLE         0
 
 // ---------------- OLED (SH1106 128x64, I2C) ----------------
 #define DISPLAY_SDA_PIN          GPIO_NUM_5   // D4

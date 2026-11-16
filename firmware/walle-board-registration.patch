@@ -24,7 +24,7 @@ index 45204d6..cfaddf7 100644
                      EMBED_FILES ${LANG_SOUNDS} ${COMMON_SOUNDS}
                      INCLUDE_DIRS ${INCLUDE_DIRS}
 diff --git a/main/Kconfig.projbuild b/main/Kconfig.projbuild
-index 80161a1..4177261 100644
+index 80161a1..f58fb5c 100644
 --- a/main/Kconfig.projbuild
 +++ b/main/Kconfig.projbuild
 @@ -457,6 +457,9 @@ choice BOARD_TYPE
@@ -32,7 +32,7 @@ index 80161a1..4177261 100644
          bool "Seeed Studio SenseCAP Watcher"
          depends on IDF_TARGET_ESP32S3
 +    config BOARD_TYPE_WALLE_XIAO_S3
-+        bool "Wall-E Robot (XIAO ESP32-S3 Sense + SH1106 OLED + TB6612)"
++        bool "Chitu robot (XIAO ESP32-S3 Sense + SH1106 OLED + TB6612)"
 +        depends on IDF_TARGET_ESP32S3
      config BOARD_TYPE_SEEED_XIAO_ESP32S3_RESPEAKER_XVF3800
          bool "Seeed XIAO ESP32-S3 + ReSpeaker XVF3800 USB 4-Mic Array"
@@ -46,34 +46,3 @@ index 80161a1..4177261 100644
      prompt "OLED Type"
      default OLED_SSD1306_128X32
      help
-diff --git a/scripts/build.py b/scripts/build.py
-index cbf1f49..64b0dd3 100755
---- a/scripts/build.py
-+++ b/scripts/build.py
-@@ -330,6 +330,26 @@ def _wake_word_sdkconfig_options(
-     target: str,
- ) -> tuple[str, list[str], list[str]]:
-     """Map a wake-word model to implementation and model Kconfig options."""
-+    # Custom phrase via ESP-SR MultiNet (e.g. "custom:hello chitu").
-+    # English uses MultiNet7, which converts lowercase text to sounds on the device.
-+    if wake_word.strip().lower().startswith("custom:"):
-+        phrase = wake_word.split(":", 1)[1].strip().lower()
-+        if not phrase or '"' in phrase:
-+            raise ValueError("Custom wake word needs a phrase, e.g. custom:hello chitu")
-+        display = phrase.title()
-+        options = [
-+            "CONFIG_WAKE_WORD_DISABLED=n",
-+            "CONFIG_USE_ESP_WAKE_WORD=n",
-+            "CONFIG_USE_AFE_WAKE_WORD=n",
-+            "CONFIG_USE_CUSTOM_WAKE_WORD=y",
-+            f'CONFIG_CUSTOM_WAKE_WORD="{phrase}"',
-+            f'CONFIG_CUSTOM_WAKE_WORD_DISPLAY="{display}"',
-+            "CONFIG_CUSTOM_WAKE_WORD_THRESHOLD=20",
-+            "CONFIG_SR_MN_CN_NONE=y",
-+            "CONFIG_SR_MN_EN_MULTINET7_QUANT=y",
-+        ]
-+        return "custom", options, ["CONFIG_USE_CUSTOM_WAKE_WORD"]
-+
-     normalized = wake_word.strip().casefold().replace("-", "_")
-     if normalized == "nihaoxiaozhi":
-         normalized = (

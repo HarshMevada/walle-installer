@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Wall-E Robot — Web Installer</title>
-  <meta name="description" content="Install the Wall-E robot firmware on a XIAO ESP32-S3 Sense directly from your browser.">
+  <title>Chitu Robot — Web Installer</title>
+  <meta name="description" content="Install the Chitu robot firmware on a XIAO ESP32-S3 Sense directly from your browser.">
   <meta name="theme-color" content="#0e1a1f">
   <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
   <style>
@@ -27,6 +27,8 @@
                border:0; border-radius:12px; cursor:pointer; display:flex; justify-content:space-between; align-items:center;
                box-shadow:0 8px 30px rgba(94,231,247,.25); transition:transform .12s; }
     .install:hover { transform:translateY(-2px); }
+    .ww { display:flex; align-items:center; gap:12px; margin-bottom:4px; font-weight:600; }
+    .ww select { flex:1; padding:11px 12px; border-radius:10px; border:1px solid var(--line); background:#0e1a1f; color:var(--text); font:inherit; font-size:16px; }
     .warn { display:block; padding:14px; border-radius:10px; background:#3a2410; color:#ffd9a8; font-size:14px; }
     .hint { font-size:13px; color:var(--muted); margin:12px 2px 0; }
     /* little robot face */
@@ -61,24 +63,28 @@
 <body>
 <main>
   <header>
-    <div class="brand">WALL·E <b>ROBOT</b></div>
+    <div class="brand">CHITU <b>ROBOT</b></div>
     <div class="ver">firmware __VERSION__</div>
   </header>
 
   <section class="hero">
     <div>
-      <h1>Plug in USB.<br>Wake up <em>Wall-E.</em></h1>
-      <p class="lede">Installs the Wall-E firmware on a Seeed XIAO ESP32-S3 Sense straight from your browser.
+      <h1>Plug in USB.<br>Wake up <em>Chitu.</em></h1>
+      <p class="lede">Installs the Chitu firmware on a Seeed XIAO ESP32-S3 Sense straight from your browser.
         No software to install.</p>
 
       <div class="card">
-        <esp-web-install-button manifest="manifest.json">
-          <button class="install" slot="activate">Connect &amp; install Wall-E <span>→</span></button>
+        <label class="ww"><span>Wake word</span>
+          <select id="ww"><option value="wn9_hiesp">Hi ESP (recommended)</option></select></label>
+        <p class="hint" id="wwhint">Chitu wakes up when you say <b>“Hi ESP”</b>.</p>
+        <esp-web-install-button id="installer" manifest="manifest.json">
+          <button class="install" slot="activate">Connect &amp; install Chitu <span>→</span></button>
           <span class="warn" slot="unsupported">This browser can't flash devices. Open this page in <b>Chrome</b> or <b>Edge</b> on a computer.</span>
           <span class="warn" slot="not-allowed">Open this page over https (the github.io link) to allow USB access.</span>
         </esp-web-install-button>
         <p class="hint">Use a USB <b>data</b> cable. If no port shows up: hold <b>BOOT</b>, tap <b>RESET</b>, release <b>BOOT</b>, and try again.
-          Choose the port called “USB JTAG/serial debug unit”. Installing erases the saved Wi-Fi.</p>
+          Choose the port called “USB JTAG/serial debug unit”.
+          Changing only the wake word? When asked “Erase device?”, leave it <b>unticked</b> to keep your Wi-Fi.</p>
       </div>
     </div>
     <div class="face" aria-hidden="true"><div class="screen"><div class="eye"></div><div class="eye"></div></div></div>
@@ -87,7 +93,7 @@
   <h2>Hardware tests (one part at a time)</h2>
   <div class="note">Use these when something doesn't work. Each test is a tiny program that checks <b>one part only</b>.
     Install a test, then in the same window click <b>Logs &amp; Console</b> to read what it reports.
-    When all four pass, install the Wall-E firmware above again.</div>
+    When all four pass, install the Chitu firmware above again.</div>
   <div class="tests">
     <div class="test">
       <div class="num">TEST 1</div><b>Screen (OLED)</b>
@@ -137,9 +143,9 @@
     <div class="step"><div class="num">01</div><b>Connect Wi-Fi</b>
       <span>Join the <b>Xiaozhi-XXXX</b> hotspot from your phone, pick your 2.4 GHz Wi-Fi and enter the password.</span></div>
     <div class="step"><div class="num">02</div><b>Activate</b>
-      <span>Wall-E shows a 6-digit code. Enter it at <a href="https://xiaozhi.me" target="_blank" rel="noopener">xiaozhi.me</a> → Add device.</span></div>
-    <div class="step"><div class="num">03</div><b>Make it Wall-E</b>
-      <span>In the xiaozhi.me console set the name <b>Wall-E</b>, a voice, and a short character description. Then say “Hi ESP”!</span></div>
+      <span>Chitu shows a 6-digit code. Enter it at <a href="https://xiaozhi.me" target="_blank" rel="noopener">xiaozhi.me</a> → Add device.</span></div>
+    <div class="step"><div class="num">03</div><b>Make it Chitu</b>
+      <span>In the xiaozhi.me console set the name <b>Chitu</b>, a voice, and a character description. Then say <b class="wwname">“Hi ESP”</b>!</span></div>
   </div>
 
   <h2>Try saying</h2>
@@ -150,9 +156,32 @@
   </div>
 
   <h2>Wiring</h2>
-  <a class="wiring" href="img/wiring.png" target="_blank"><img src="img/wiring.png" alt="Wall-E wiring diagram" loading="lazy"></a>
+  <a class="wiring" href="img/wiring.png" target="_blank"><img src="img/wiring.png" alt="Chitu wiring diagram" loading="lazy"></a>
 
   <footer>Built on the open-source xiaozhi-esp32 project · ESP Web Tools by ESPHome</footer>
 </main>
+<script>
+// Wake word menu: one firmware per wake word, built by GitHub
+const NOTES = { wn9_hiesp: "recommended", wn9_alexa: "very reliable" };
+const sel = document.getElementById("ww"), btn = document.getElementById("installer");
+fetch("wakewords.json").then(r => r.json()).then(words => {
+  sel.innerHTML = "";
+  for (const w of words) {
+    const o = document.createElement("option");
+    o.value = w.model; o.dataset.label = w.label;
+    o.textContent = w.label + " (" + (NOTES[w.model] || "experimental") + ")";
+    sel.appendChild(o);
+  }
+  sel.onchange();
+}).catch(() => {});
+sel.onchange = () => {
+  const o = sel.selectedOptions[0];
+  const label = (o && o.dataset.label) || "Hi ESP";
+  btn.setAttribute("manifest", "manifest-" + sel.value + ".json");
+  document.getElementById("wwhint").innerHTML = "Chitu wakes up when you say <b>“" + label + "”</b>." +
+    (NOTES[sel.value] ? "" : " Experimental words are trained on computer voices: test them, and switch back if Chitu doesn't respond well.");
+  document.querySelectorAll(".wwname").forEach(e => e.textContent = "“" + label + "”");
+};
+</script>
 </body>
 </html>

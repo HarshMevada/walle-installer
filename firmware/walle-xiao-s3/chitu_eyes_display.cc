@@ -1,7 +1,6 @@
 #include "config.h"
-#if WALLE_EYES_STYLE == 0
 
-#include "walle_drawn_eyes_display.h"
+#include "chitu_eyes_display.h"
 #include "chitu_emoji_font.h"
 
 #include <esp_log.h>
@@ -12,7 +11,7 @@
 #include <cstring>
 #include <string>
 
-#define TAG "WallEDrawnEyes"
+#define TAG "ChituEyes"
 
 namespace {
 // On the mono OLED port "black" pixels are lit and "white" pixels are off.
@@ -42,12 +41,12 @@ lv_obj_t* MakeBox(lv_obj_t* parent, lv_color_t color) {
 }
 }  // namespace
 
-WallEDrawnEyesDisplay::WallEDrawnEyesDisplay(esp_lcd_panel_io_handle_t panel_io,
+ChituEyesDisplay::ChituEyesDisplay(esp_lcd_panel_io_handle_t panel_io,
                                              esp_lcd_panel_handle_t panel, int width, int height,
                                              bool mirror_x, bool mirror_y)
     : OledDisplay(panel_io, panel, width, height, mirror_x, mirror_y) {}
 
-WallEDrawnEyesDisplay::~WallEDrawnEyesDisplay() {
+ChituEyesDisplay::~ChituEyesDisplay() {
     DisplayLockGuard lock(this);
     lv_anim_delete(this, nullptr);
     if (msg_timer_ != nullptr) {
@@ -69,7 +68,7 @@ WallEDrawnEyesDisplay::~WallEDrawnEyesDisplay() {
     }
 }
 
-void WallEDrawnEyesDisplay::SetupUI() {
+void ChituEyesDisplay::SetupUI() {
     OledDisplay::SetupUI();  // status bar, notifications, chat label
     if (layer_ != nullptr) {
         return;
@@ -151,13 +150,13 @@ void WallEDrawnEyesDisplay::SetupUI() {
     next_blink_ms_ = now + 1500;
     next_glance_ms_ = now + 3000;
     idle_timer_ = lv_timer_create(IdleTimerCb, 100, this);
-    ESP_LOGI(TAG, "Wall-E eyes ready");
+    ESP_LOGI(TAG, "Chitu eyes ready");
 }
 
 // ---------------------------------------------------------------------------
 // Emotion -> eye shape
 // ---------------------------------------------------------------------------
-WallEDrawnEyesDisplay::Shape WallEDrawnEyesDisplay::ShapeFor(const char* emotion, bool* wander) {
+ChituEyesDisplay::Shape ChituEyesDisplay::ShapeFor(const char* emotion, bool* wander) {
     Shape s;
     *wander = false;
     auto both = [&s](float h, float top, float angle, float bottom) {
@@ -252,7 +251,7 @@ WallEDrawnEyesDisplay::Shape WallEDrawnEyesDisplay::ShapeFor(const char* emotion
 // ---------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------
-void WallEDrawnEyesDisplay::Render() {
+void ChituEyesDisplay::Render() {
     if (layer_ == nullptr) {
         return;
     }
@@ -297,7 +296,7 @@ void WallEDrawnEyesDisplay::Render() {
     }
 }
 
-void WallEDrawnEyesDisplay::ShowEyes(bool show) {
+void ChituEyesDisplay::ShowEyes(bool show) {
     if (layer_ == nullptr) {
         return;
     }
@@ -311,7 +310,7 @@ void WallEDrawnEyesDisplay::ShowEyes(bool show) {
 // ---------------------------------------------------------------------------
 // Animation
 // ---------------------------------------------------------------------------
-void WallEDrawnEyesDisplay::TransitionTo(const Shape& target, uint32_t duration_ms) {
+void ChituEyesDisplay::TransitionTo(const Shape& target, uint32_t duration_ms) {
     lv_anim_delete(this, TransitionAnimCb);
     from_ = current_;
     to_ = target;
@@ -326,8 +325,8 @@ void WallEDrawnEyesDisplay::TransitionTo(const Shape& target, uint32_t duration_
     lv_anim_start(&a);
 }
 
-void WallEDrawnEyesDisplay::TransitionAnimCb(void* var, int32_t value) {
-    auto* self = static_cast<WallEDrawnEyesDisplay*>(var);
+void ChituEyesDisplay::TransitionAnimCb(void* var, int32_t value) {
+    auto* self = static_cast<ChituEyesDisplay*>(var);
     float t = value / 1000.0f;
     Shape& c = self->current_;
     const Shape& f = self->from_;
@@ -344,23 +343,23 @@ void WallEDrawnEyesDisplay::TransitionAnimCb(void* var, int32_t value) {
     self->Render();
 }
 
-void WallEDrawnEyesDisplay::BlinkAnimCb(void* var, int32_t value) {
+void ChituEyesDisplay::BlinkAnimCb(void* var, int32_t value) {
     // value 0..2000: close during the first half, open during the second
-    auto* self = static_cast<WallEDrawnEyesDisplay*>(var);
+    auto* self = static_cast<ChituEyesDisplay*>(var);
     float t = value <= 1000 ? value / 1000.0f : (2000 - value) / 1000.0f;
     self->blink_ = 1.0f - 0.92f * t;
     self->Render();
 }
 
-void WallEDrawnEyesDisplay::BlinkDoneCb(lv_anim_t* a) {
-    auto* self = static_cast<WallEDrawnEyesDisplay*>(a->var);
+void ChituEyesDisplay::BlinkDoneCb(lv_anim_t* a) {
+    auto* self = static_cast<ChituEyesDisplay*>(a->var);
     self->blink_ = 1.0f;
     self->blinking_ = false;
     self->Render();
 }
 
-void WallEDrawnEyesDisplay::IdleTimerCb(lv_timer_t* t) {
-    auto* self = static_cast<WallEDrawnEyesDisplay*>(lv_timer_get_user_data(t));
+void ChituEyesDisplay::IdleTimerCb(lv_timer_t* t) {
+    auto* self = static_cast<ChituEyesDisplay*>(lv_timer_get_user_data(t));
     if (self->layer_ == nullptr || lv_obj_has_flag(self->layer_, LV_OBJ_FLAG_HIDDEN)) {
         return;
     }
@@ -407,7 +406,7 @@ void WallEDrawnEyesDisplay::IdleTimerCb(lv_timer_t* t) {
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
-bool WallEDrawnEyesDisplay::SetEmotion(const char* emotion) {
+bool ChituEyesDisplay::SetEmotion(const char* emotion) {
     DisplayLockGuard lock(this);
     if (layer_ == nullptr) {
         return false;
@@ -448,7 +447,7 @@ bool WallEDrawnEyesDisplay::SetEmotion(const char* emotion) {
     return true;
 }
 
-void WallEDrawnEyesDisplay::SetChatMessage(const char* role, const char* content) {
+void ChituEyesDisplay::SetChatMessage(const char* role, const char* content) {
     OledDisplay::SetChatMessage(role, content);
     DisplayLockGuard lock(this);
     bool is_system_text =
@@ -457,7 +456,7 @@ void WallEDrawnEyesDisplay::SetChatMessage(const char* role, const char* content
     ShowEyes(!is_system_text);
 }
 
-void WallEDrawnEyesDisplay::LookAt(float x, float y) {
+void ChituEyesDisplay::LookAt(float x, float y) {
     DisplayLockGuard lock(this);
     if (layer_ == nullptr) {
         return;
@@ -475,7 +474,7 @@ void WallEDrawnEyesDisplay::LookAt(float x, float y) {
 // ---------------------------------------------------------------------------
 // Expressions: bounce / shake / roll, hearts, sleeping
 // ---------------------------------------------------------------------------
-void WallEDrawnEyesDisplay::StartFx(Fx fx, uint32_t duration_ms) {
+void ChituEyesDisplay::StartFx(Fx fx, uint32_t duration_ms) {
     lv_anim_delete(this, FxAnimCb);
     fx_ = fx;
     lv_anim_t a;
@@ -489,8 +488,8 @@ void WallEDrawnEyesDisplay::StartFx(Fx fx, uint32_t duration_ms) {
     lv_anim_start(&a);
 }
 
-void WallEDrawnEyesDisplay::FxAnimCb(void* var, int32_t value) {
-    auto* self = static_cast<WallEDrawnEyesDisplay*>(var);
+void ChituEyesDisplay::FxAnimCb(void* var, int32_t value) {
+    auto* self = static_cast<ChituEyesDisplay*>(var);
     constexpr float kTwoPi = 6.2831853f;
     float t = value / 1000.0f;  // seconds
     switch (self->fx_) {
@@ -513,22 +512,22 @@ void WallEDrawnEyesDisplay::FxAnimCb(void* var, int32_t value) {
     self->Render();
 }
 
-void WallEDrawnEyesDisplay::FxDoneCb(lv_anim_t* a) {
-    auto* self = static_cast<WallEDrawnEyesDisplay*>(a->var);
+void ChituEyesDisplay::FxDoneCb(lv_anim_t* a) {
+    auto* self = static_cast<ChituEyesDisplay*>(a->var);
     self->fx_ = Fx::kNone;
     self->fx_dx_ = 0;
     self->fx_dy_ = 0;
     self->Render();
 }
 
-void WallEDrawnEyesDisplay::HeartPulseCb(void* var, int32_t value) {
-    auto* self = static_cast<WallEDrawnEyesDisplay*>(var);
+void ChituEyesDisplay::HeartPulseCb(void* var, int32_t value) {
+    auto* self = static_cast<ChituEyesDisplay*>(var);
     for (auto* h : self->heart_) {
         lv_obj_set_style_transform_scale(h, value, 0);
     }
 }
 
-void WallEDrawnEyesDisplay::ShowHearts(uint32_t duration_ms) {
+void ChituEyesDisplay::ShowHearts(uint32_t duration_ms) {
     for (int i = 0; i < 2; i++) {
         lv_obj_add_flag(eye_[i], LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(heart_[i], LV_OBJ_FLAG_HIDDEN);
@@ -548,7 +547,7 @@ void WallEDrawnEyesDisplay::ShowHearts(uint32_t duration_ms) {
     }
     heart_timer_ = lv_timer_create(
         [](lv_timer_t* t) {
-            auto* self = static_cast<WallEDrawnEyesDisplay*>(lv_timer_get_user_data(t));
+            auto* self = static_cast<ChituEyesDisplay*>(lv_timer_get_user_data(t));
             self->heart_timer_ = nullptr;
             lv_timer_delete(t);
             self->HideHearts();
@@ -556,7 +555,7 @@ void WallEDrawnEyesDisplay::ShowHearts(uint32_t duration_ms) {
         duration_ms, this);
 }
 
-void WallEDrawnEyesDisplay::HideHearts() {
+void ChituEyesDisplay::HideHearts() {
     if (heart_[0] == nullptr || lv_obj_has_flag(heart_[0], LV_OBJ_FLAG_HIDDEN)) {
         return;
     }
@@ -571,7 +570,7 @@ void WallEDrawnEyesDisplay::HideHearts() {
     }
 }
 
-void WallEDrawnEyesDisplay::SetSleeping(bool sleeping) {
+void ChituEyesDisplay::SetSleeping(bool sleeping) {
     if (sleeping == sleeping_ || zzz_ == nullptr) {
         return;
     }
@@ -622,11 +621,11 @@ int EmojiOnlyCount(const std::string& s) {
 }
 }  // namespace
 
-void WallEDrawnEyesDisplay::MsgScrollCb(void* var, int32_t value) {
+void ChituEyesDisplay::MsgScrollCb(void* var, int32_t value) {
     lv_obj_set_y(static_cast<lv_obj_t*>(var), value);
 }
 
-void WallEDrawnEyesDisplay::ShowMessage(const std::string& text, int seconds) {
+void ChituEyesDisplay::ShowMessage(const std::string& text, int seconds) {
     DisplayLockGuard lock(this);
     if (msg_layer_ == nullptr) {
         return;
@@ -680,7 +679,7 @@ void WallEDrawnEyesDisplay::ShowMessage(const std::string& text, int seconds) {
     }
     msg_timer_ = lv_timer_create(
         [](lv_timer_t* t) {
-            auto* self = static_cast<WallEDrawnEyesDisplay*>(lv_timer_get_user_data(t));
+            auto* self = static_cast<ChituEyesDisplay*>(lv_timer_get_user_data(t));
             self->msg_timer_ = nullptr;
             lv_timer_delete(t);
             self->HideMessage();
@@ -688,7 +687,7 @@ void WallEDrawnEyesDisplay::ShowMessage(const std::string& text, int seconds) {
         seconds * 1000, this);
 }
 
-void WallEDrawnEyesDisplay::HideMessage() {
+void ChituEyesDisplay::HideMessage() {
     lv_anim_delete(msg_label_, MsgScrollCb);
     lv_obj_add_flag(msg_layer_, LV_OBJ_FLAG_HIDDEN);
     // a happy blink after reading the message
@@ -696,4 +695,3 @@ void WallEDrawnEyesDisplay::HideMessage() {
     StartFx(Fx::kBounce, 700);
 }
 
-#endif  // WALLE_EYES_STYLE == 0

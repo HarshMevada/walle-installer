@@ -6,16 +6,16 @@
 
 #include <string>
 
-// Wall-E style animated eyes drawn live on a 128x64 monochrome OLED (WALLE_EYES_STYLE 0).
+// Chitu's animated eyes, drawn live on the 128x64 monochrome OLED.
 //
 // The normal xiaozhi OLED status bar stays on top; under it two big rounded eyes
-// blink, glance around, change shape with the AI's emotion and look where Wall-E
+// blink, glance around, change shape with the AI's emotion and look where Chitu
 // is turning. System messages (Wi-Fi setup, activation code) temporarily hide the eyes.
-class WallEDrawnEyesDisplay : public OledDisplay {
+class ChituEyesDisplay : public OledDisplay {
 public:
-    WallEDrawnEyesDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
+    ChituEyesDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
                           int width, int height, bool mirror_x, bool mirror_y);
-    ~WallEDrawnEyesDisplay();
+    ~ChituEyesDisplay();
 
     void SetupUI() override;
     bool SetEmotion(const char* emotion) override;

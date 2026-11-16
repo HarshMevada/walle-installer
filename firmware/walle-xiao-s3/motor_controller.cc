@@ -433,7 +433,7 @@ void MotorController::RegisterMcpTools() {
         "About 1000 ms is a short step, 3000-6000 ms crosses part of a room, a 90 degree turn "
         "is roughly 400-600 ms. The robot stops by itself when the time is up, and forward "
         "moves stop automatically in front of obstacles. To wander around on its own, use "
-        "self.chitu.roam instead. Use self.chitu.run_motor for only one wheel/motor.",
+        "self.chitu.roam instead.",
         PropertyList({
             Property("direction", kPropertyTypeString, std::string("forward")),
             Property("speed", kPropertyTypeInteger, 70, 1, 100),
@@ -454,44 +454,6 @@ void MotorController::RegisterMcpTools() {
             return std::string("{\"ok\":true,\"direction\":\"") + direction +
                    "\",\"speed\":" + std::to_string(speed) +
                    ",\"duration_ms\":" + std::to_string(duration) + "}";
-        });
-
-    mcp.AddTool(
-        "self.chitu.run_motor",
-        "Run exactly one of Chitu's wheels while the other stays stopped. "
-        "Use this when the user asks for only the left or only the right motor/wheel. "
-        "motor: left or right. direction: forward or backward. speed: 1-100. duration_ms: 100-10000.",
-        PropertyList({
-            Property("motor", kPropertyTypeString, std::string("left")),
-            Property("direction", kPropertyTypeString, std::string("forward")),
-            Property("speed", kPropertyTypeInteger, 70, 1, 100),
-            Property("duration_ms", kPropertyTypeInteger, 1000, 100, MOTOR_MAX_DURATION_MS),
-        }),
-        [this](const PropertyList& properties) -> ReturnValue {
-            auto motor = properties["motor"].value<std::string>();
-            auto direction = properties["direction"].value<std::string>();
-            int speed = properties["speed"].value<int>();
-            int duration = properties["duration_ms"].value<int>();
-            if (motor != "left" && motor != "right") {
-                return ErrorJson("Invalid motor. Use left or right.");
-            }
-            Dir d;
-            if (direction == "forward") {
-                d = Dir::kForward;
-            } else if (direction == "backward") {
-                d = Dir::kBackward;
-            } else {
-                return ErrorJson("Invalid direction. Use forward or backward.");
-            }
-            StopRoam();
-            bool ok = (motor == "left") ? Drive(d, Dir::kStop, speed, duration)
-                                        : Drive(Dir::kStop, d, speed, duration);
-            if (!ok) {
-                return ErrorJson("Motor command queue is unavailable.");
-            }
-            return std::string("{\"ok\":true,\"motor\":\"") + motor + "\",\"direction\":\"" +
-                   direction + "\",\"other_motor\":\"stopped\",\"duration_ms\":" +
-                   std::to_string(duration) + "}";
         });
 
     mcp.AddTool(

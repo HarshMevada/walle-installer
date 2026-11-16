@@ -1,4 +1,4 @@
-// Wall-E robot: Seeed XIAO ESP32-S3 Sense + MAX98357 + TB6612FNG + SH1106 OLED
+// Chitu robot: Seeed XIAO ESP32-S3 Sense + MAX98357 + TB6612FNG + SH1106 OLED
 #include "wifi_board.h"
 #include "codecs/no_audio_codec.h"
 #include "application.h"
@@ -15,13 +15,7 @@
 #include "obstacle_sensor.h"
 #include "pet_mode.h"
 #include "web_console.h"
-#if WALLE_EYES_STYLE == 1
-#include "walle_gif_eyes_display.h"
-using WallEEyesDisplay = WallEGifEyesDisplay;
-#else
-#include "walle_drawn_eyes_display.h"
-using WallEEyesDisplay = WallEDrawnEyesDisplay;
-#endif
+#include "chitu_eyes_display.h"
 
 #include <ssid_manager.h>
 
@@ -38,16 +32,16 @@ using WallEEyesDisplay = WallEDrawnEyesDisplay;
 #include <esp_lcd_panel_sh1106.h>
 #include <esp_log.h>
 
-#define TAG "WallEBoard"
+#define TAG "ChituBoard"
 
 // Audio codec tuned for this robot:
 //  - microphone: multiplies the quiet PDM mic by MIC_GAIN
 //  - speaker: automatic gain - boosts quiet speech up to SPEAKER_BOOST, but lowers the
 //    gain instantly when peaks would exceed SPEAKER_TARGET_PEAK (no distortion), and
 //    starts at DEFAULT_OUTPUT_VOLUME on a fresh install.
-class WallEAudioCodec : public NoAudioCodecSimplexPdm {
+class ChituAudioCodec : public NoAudioCodecSimplexPdm {
 public:
-    WallEAudioCodec(int input_rate, int output_rate, gpio_num_t bclk, gpio_num_t ws,
+    ChituAudioCodec(int input_rate, int output_rate, gpio_num_t bclk, gpio_num_t ws,
                     gpio_num_t dout, gpio_num_t mic_clk, gpio_num_t mic_din)
         : NoAudioCodecSimplexPdm(input_rate, output_rate, bclk, ws, dout, mic_clk, mic_din) {
         output_volume_ = DEFAULT_OUTPUT_VOLUME;  // used unless a volume was saved before
@@ -159,13 +153,13 @@ private:
     bool phone_starved_ = true;
 };
 
-class WallEXiaoS3Board : public WifiBoard {
+class ChituBoard : public WifiBoard {
 private:
     i2c_master_bus_handle_t display_i2c_bus_ = nullptr;
     esp_lcd_panel_io_handle_t panel_io_ = nullptr;
     esp_lcd_panel_handle_t panel_ = nullptr;
     Display* display_ = nullptr;
-    WallEEyesDisplay* eyes_ = nullptr;
+    ChituEyesDisplay* eyes_ = nullptr;
     Camera* camera_ = nullptr;
     MotorController motors_;
     ObstacleSensor obstacle_;
@@ -175,7 +169,7 @@ private:
     esp_timer_handle_t wifi_retry_timer_ = nullptr;
     esp_timer_handle_t diag_timer_ = nullptr;
 
-    // Prints mic level + wake words every 5 s (Serial Monitor "DIAG" lines)
+    // Prints mic level + wake words every 30 s (Serial Monitor "DIAG" lines)
     void StartDiagnostics() {
         esp_timer_create_args_t args = {};
         args.callback = [](void*) {
@@ -199,7 +193,7 @@ private:
         };
         args.name = "diag";
         if (esp_timer_create(&args, &diag_timer_) == ESP_OK) {
-            esp_timer_start_periodic(diag_timer_, 5ULL * 1000 * 1000);
+            esp_timer_start_periodic(diag_timer_, 30ULL * 1000 * 1000);
         }
     }
     int64_t config_mode_since_us_ = 0;
@@ -233,7 +227,7 @@ private:
     }
 
     static void WifiRetryCheck(void* arg) {
-        auto* self = static_cast<WallEXiaoS3Board*>(arg);
+        auto* self = static_cast<ChituBoard*>(arg);
         int64_t now = esp_timer_get_time();
         wifi_sta_list_t stations = {};
         if (esp_wifi_ap_get_sta_list(&stations) == ESP_OK && stations.num > 0) {
@@ -301,7 +295,7 @@ private:
         ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_, false));
         ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_, true));
 
-        eyes_ = new WallEEyesDisplay(panel_io_, panel_, DISPLAY_WIDTH, DISPLAY_HEIGHT,
+        eyes_ = new ChituEyesDisplay(panel_io_, panel_, DISPLAY_WIDTH, DISPLAY_HEIGHT,
                                      DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y);
         display_ = eyes_;
     }
@@ -343,7 +337,7 @@ private:
 
     void InitializeMotors() {
         motors_.Initialize();
-        // Wall-E looks where it is going
+        // Chitu looks where it is going
         motors_.SetMoveCallback([this](MotorController::Dir left, MotorController::Dir right) {
             if (eyes_ == nullptr) {
                 return;
@@ -390,15 +384,9 @@ private:
             return;
         }
         web_.SetMessageHandler([this](const std::string& text, bool say_it) {
-#if WALLE_EYES_STYLE == 0
             if (eyes_ != nullptr) {
                 eyes_->ShowMessage(text, 8);
             }
-#else
-            if (display_ != nullptr) {
-                display_->ShowNotification(text, 8000);
-            }
-#endif
             auto& app = Application::GetInstance();
             if (say_it) {
                 app.WakeWordInvoke("(Someone sent you this message from the phone app: \"" + text +
@@ -426,7 +414,7 @@ private:
     }
 
 public:
-    WallEXiaoS3Board() : boot_button_(BOOT_BUTTON_GPIO) {
+    ChituBoard() : boot_button_(BOOT_BUTTON_GPIO) {
         // Motors first so the driver is held in a safe stopped state as early as possible
         InitializeMotors();
         InitializeDisplayI2c();
@@ -441,7 +429,7 @@ public:
                 if (eyes_ != nullptr) eyes_->LookAt(x, y);
             },
             [this]() { return web_.RecentlyUsed(); });
-        ESP_LOGI(TAG, "Wall-E board initialized");
+        ESP_LOGI(TAG, "Chitu board initialized");
     }
 
     Led* GetLed() override {
@@ -450,7 +438,7 @@ public:
     }
 
     AudioCodec* GetAudioCodec() override {
-        static WallEAudioCodec audio_codec(
+        static ChituAudioCodec audio_codec(
             AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE, AUDIO_I2S_SPK_GPIO_BCLK,
             AUDIO_I2S_SPK_GPIO_LRCK, AUDIO_I2S_SPK_GPIO_DOUT, AUDIO_PDM_MIC_GPIO_CLK,
             AUDIO_PDM_MIC_GPIO_DATA);
@@ -472,4 +460,4 @@ public:
     Camera* GetCamera() override { return camera_; }
 };
 
-DECLARE_BOARD(WallEXiaoS3Board);
+DECLARE_BOARD(ChituBoard);

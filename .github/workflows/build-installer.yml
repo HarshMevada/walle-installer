@@ -1,7 +1,7 @@
-# Builds the Wall-E firmware in the cloud and publishes the web installer on GitHub Pages.
+# Builds the Chitu firmware in the cloud and publishes the web installer on GitHub Pages.
 # Runs automatically on every change, or manually from the Actions tab
-# (there you can pick another language / wake word).
-name: Build Wall-E web installer
+# (there you can pick another language).
+name: Build Chitu web installer
 
 on:
   push:
@@ -11,9 +11,6 @@ on:
       language:
         description: "Language (en-US, hi-IN, ...)"
         default: "en-US"
-      wake_word:
-        description: "Wake word: custom:<phrase> (e.g. custom:hello chitu) or a model (hiesp, ...)"
-        default: "hiesp"
 
 permissions:
   contents: read
@@ -25,20 +22,38 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # xiaozhi-esp32 version this Wall-E board was written and tested against
+  # xiaozhi-esp32 version this Chitu board was written and tested against
   XIAOZHI_COMMIT: 1b7644a6fba2b025ed36b4ac6309f122cc3cea14
 
 jobs:
   firmware:
-    name: Build firmware
+    name: Firmware (${{ matrix.label }})
     runs-on: ubuntu-latest
     container:
       image: espressif/idf:release-v6.1
+    strategy:
+      fail-fast: false
+      matrix:
+        # One firmware per wake word. Words whose model is missing simply fail
+        # here and are left out of the installer's wake word menu.
+        include:
+          - { model: wn9_hiesp,         label: "Hi ESP" }
+          - { model: wn9_alexa,         label: "Alexa" }
+          - { model: wn9_hiwalle_tts2,  label: "Hi Wall-E" }
+          - { model: wn9_jarvis_tts,    label: "Jarvis" }
+          - { model: wn9_hijason_tts2,  label: "Hi Jason" }
+          - { model: wn9_sophia_tts,    label: "Sophia" }
+          - { model: wn9_computer_tts,  label: "Computer" }
+          - { model: wn9_hijoy_tts,     label: "Hi Joy" }
+          - { model: wn9_hiandy_tts2,   label: "Hi Andy" }
+          - { model: wn9_heywillow_tts, label: "Hey Willow" }
+          - { model: wn9_mycroft_tts,   label: "Mycroft" }
+          - { model: wn9_heykira_tts3,  label: "Hey Kira" }
     steps:
       - name: Checkout this repo
         uses: actions/checkout@v7
 
-      - name: Get xiaozhi and add the Wall-E board
+      - name: Get xiaozhi and add the Chitu board
         shell: bash
         run: |
           git config --global --add safe.directory '*'
@@ -56,13 +71,12 @@ jobs:
         working-directory: xiaozhi
         env:
           LANG_CODE: ${{ inputs.language || 'en-US' }}
-          WAKE_WORD: ${{ inputs.wake_word || 'hiesp' }}
         run: |
           source "$IDF_PATH/export.sh"
-          python scripts/build.py walle-xiao-s3 --language "$LANG_CODE" --wake-word "$WAKE_WORD"
+          python scripts/build.py walle-xiao-s3 --language "$LANG_CODE" --wake-word "${{ matrix.model }}"
 
       - name: Decode crash backtrace (debug/backtrace.txt)
-        if: hashFiles('debug/backtrace.txt') != ''
+        if: matrix.model == 'wn9_hiesp' && hashFiles('debug/backtrace.txt') != ''
         shell: bash
         working-directory: xiaozhi
         run: |
@@ -70,17 +84,38 @@ jobs:
           echo "=== decoded backtrace ==="
           xtensa-esp32s3-elf-addr2line -pfiaC -e build/xiaozhi.elf $(cat ../debug/backtrace.txt)
 
+      - name: Collect flash parts
+        shell: bash
+        working-directory: xiaozhi
+        run: |
+          # Separate parts (not one merged image) so re-installing keeps the saved Wi-Fi
+          python3 - <<'PY'
+          import json, os, shutil
+          args = json.load(open("build/flasher_args.json"))
+          out = "../out/${{ matrix.model }}"
+          os.makedirs(out, exist_ok=True)
+          parts = []
+          for offset, path in sorted(args["flash_files"].items(), key=lambda kv: int(kv[0], 16)):
+              name = os.path.basename(path)
+              shutil.copy(os.path.join("build", path), os.path.join(out, name))
+              parts.append({"path": name, "offset": int(offset, 16)})
+          json.dump({"label": "${{ matrix.label }}", "model": "${{ matrix.model }}", "parts": parts},
+                    open(os.path.join(out, "parts.json"), "w"))
+          print(parts)
+          PY
+
       - name: Save ELF (for decoding crashes)
+        if: matrix.model == 'wn9_hiesp'
         uses: actions/upload-artifact@v7
         with:
-          name: walle-elf
+          name: chitu-elf
           path: xiaozhi/build/xiaozhi.elf
 
       - name: Save firmware
         uses: actions/upload-artifact@v7
         with:
-          name: walle-firmware
-          path: xiaozhi/build/merged-binary.bin
+          name: chitu-fw-${{ matrix.model }}
+          path: out
           if-no-files-found: error
 
   tests:
@@ -119,56 +154,70 @@ jobs:
       - name: Save test binaries
         uses: actions/upload-artifact@v7
         with:
-          name: walle-tests
+          name: chitu-tests
           path: out/*.bin
           if-no-files-found: error
 
   site:
     name: Prepare installer page
     needs: [firmware, tests]
+    if: ${{ !cancelled() && needs.tests.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout this repo
         uses: actions/checkout@v7
 
-      - name: Get firmware
+      - name: Get firmware builds
         uses: actions/download-artifact@v8
         with:
-          name: walle-firmware
+          pattern: chitu-fw-*
+          merge-multiple: true
           path: site/firmware
 
       - name: Get test binaries
         uses: actions/download-artifact@v8
         with:
-          name: walle-tests
+          name: chitu-tests
           path: site/tests
 
-      - name: Write manifest and version
+      - name: Write manifests and wake word menu
         shell: bash
         run: |
-          mv site/firmware/merged-binary.bin site/firmware/walle.bin
           VERSION="$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}"
-          cat > site/manifest.json <<EOF
-          {
-            "name": "Wall-E Robot",
-            "version": "$VERSION",
-            "new_install_prompt_erase": true,
-            "builds": [
-              {
-                "chipFamily": "ESP32-S3",
-                "improv": false,
-                "parts": [{ "path": "firmware/walle.bin", "offset": 0 }]
+          VERSION="$VERSION" python3 - <<'PY'
+          import json, os, glob
+          version = os.environ["VERSION"]
+          order = ["wn9_hiesp", "wn9_alexa", "wn9_hiwalle_tts2", "wn9_jarvis_tts", "wn9_hijason_tts2",
+                   "wn9_sophia_tts", "wn9_computer_tts", "wn9_hijoy_tts", "wn9_hiandy_tts2",
+                   "wn9_heywillow_tts", "wn9_mycroft_tts", "wn9_heykira_tts3"]
+          words = []
+          for f in glob.glob("site/firmware/*/parts.json"):
+              info = json.load(open(f))
+              model = info["model"]
+              manifest = {
+                  "name": "Chitu (" + info["label"] + ")",
+                  "version": version,
+                  "new_install_prompt_erase": True,
+                  "builds": [{"chipFamily": "ESP32-S3", "improv": False,
+                              "parts": [{"path": "firmware/%s/%s" % (model, p["path"]), "offset": p["offset"]}
+                                        for p in info["parts"]]}],
               }
-            ]
-          }
-          EOF
+              json.dump(manifest, open("site/manifest-%s.json" % model, "w"), indent=2)
+              words.append({"model": model, "label": info["label"]})
+          words.sort(key=lambda w: order.index(w["model"]) if w["model"] in order else 99)
+          if not words:
+              raise SystemExit("no firmware was built")
+          # default install button = first word (Hi ESP)
+          os.system("cp site/manifest-%s.json site/manifest.json" % words[0]["model"])
+          json.dump(words, open("site/wakewords.json", "w"))
+          print("wake words:", [w["label"] for w in words])
+          PY
           sed -i "s/__VERSION__/$VERSION/g" site/index.html
           for bin in site/tests/*.bin; do
             name=$(basename "$bin" .bin)
-            printf '{"name":"Wall-E %s","version":"%s","new_install_prompt_erase":false,"builds":[{"chipFamily":"ESP32-S3","parts":[{"path":"%s.bin","offset":0}]}]}\n' "$name" "$VERSION" "$name" > "site/tests/$name.json"
+            printf '{"name":"Chitu %s","version":"%s","new_install_prompt_erase":false,"builds":[{"chipFamily":"ESP32-S3","parts":[{"path":"%s.bin","offset":0}]}]}\n' "$name" "$VERSION" "$name" > "site/tests/$name.json"
           done
-          ls -la site/tests
-          ls -la site site/firmware
+          ls -la site site/firmware/*
 
       - name: Package page
         uses: actions/upload-pages-artifact@v5
@@ -178,6 +227,7 @@ jobs:
   deploy:
     name: Publish to GitHub Pages
     needs: site
+    if: ${{ !cancelled() && needs.site.result == 'success' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
