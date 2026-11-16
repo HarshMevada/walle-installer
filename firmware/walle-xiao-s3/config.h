@@ -108,7 +108,7 @@
 
 // ---------------- Phone web console ----------------
 #define WEB_CONSOLE_PORT         80     // control page
-#define WEB_STREAM_PORT          81     // live camera (MJPEG)
+#define WEB_CONSOLE_PORT_SECURE 443   // https page (needed for the phone microphone)
 
 // ---------------- Camera (XIAO ESP32-S3 Sense, OV3660 / OV2640) ----------------
 #define CAMERA_PIN_PWDN          GPIO_NUM_NC
@@ -135,3 +135,12 @@
 // (that choice is saved on the robot and survives restarts).
 #define CAMERA_HMIRROR 1
 #define CAMERA_VFLIP   1
+
+// Pet mode: what Chitu does on its own while idle (switch on/off in the phone console)
+#define PET_TIMEZONE             "IST-5:30"  // POSIX TZ string, for the quiet hours
+#define PET_QUIET_FROM_HOUR      22          // no chirps or chatter from 22:00 ...
+#define PET_QUIET_TO_HOUR        8           // ... until 08:00
+#define PET_SLEEP_AFTER_MINUTES  15          // dozes off after this long without attention
+#define PET_CHAT_MIN_MINUTES     25          // "chatty": speaks up on its own every 25-45 min
+#define PET_CHAT_MAX_MINUTES     45
+#define PET_MOVES                1           // 1 = small happy wiggles on the spot, 0 = eyes only

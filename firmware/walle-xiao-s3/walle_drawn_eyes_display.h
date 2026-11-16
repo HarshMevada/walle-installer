@@ -4,6 +4,8 @@
 
 #include <lvgl.h>
 
+#include <string>
+
 // Wall-E style animated eyes drawn live on a 128x64 monochrome OLED (WALLE_EYES_STYLE 0).
 //
 // The normal xiaozhi OLED status bar stays on top; under it two big rounded eyes
@@ -21,6 +23,9 @@ public:
 
     // Look in a direction, -1..1 on each axis (0,0 = straight ahead).
     void LookAt(float x, float y);
+
+    // Show a text message (emoji supported) over the eyes for a few seconds.
+    void ShowMessage(const std::string& text, int seconds);
 
 private:
     struct EyeParams {
@@ -41,6 +46,24 @@ private:
     lv_obj_t* top_lid_[2] = {nullptr, nullptr};
     lv_obj_t* bottom_lid_[2] = {nullptr, nullptr};
     lv_timer_t* idle_timer_ = nullptr;
+
+    // text + emoji
+    lv_font_t emoji_font_ = {};
+    lv_font_t text_font_ = {};
+    lv_obj_t* msg_layer_ = nullptr;
+    lv_obj_t* msg_label_ = nullptr;
+    lv_timer_t* msg_timer_ = nullptr;
+
+    // extra expressions
+    enum class Fx { kNone, kBounce, kShake, kRoll };
+    Fx fx_ = Fx::kNone;
+    float fx_dx_ = 0.0f;
+    float fx_dy_ = 0.0f;
+    lv_obj_t* heart_[2] = {nullptr, nullptr};
+    lv_timer_t* heart_timer_ = nullptr;
+    lv_obj_t* zzz_ = nullptr;
+    bool sleeping_ = false;
+    int zzz_step_ = 0;
 
     Shape base_;  // shape of the current emotion, without glances
     Shape from_;
@@ -64,4 +87,14 @@ private:
     static void BlinkAnimCb(void* var, int32_t value);
     static void BlinkDoneCb(lv_anim_t* a);
     static void IdleTimerCb(lv_timer_t* t);
+
+    void StartFx(Fx fx, uint32_t duration_ms);
+    void ShowHearts(uint32_t duration_ms);
+    void HideHearts();
+    void SetSleeping(bool sleeping);
+    void HideMessage();
+    static void FxAnimCb(void* var, int32_t value);
+    static void FxDoneCb(lv_anim_t* a);
+    static void HeartPulseCb(void* var, int32_t value);
+    static void MsgScrollCb(void* var, int32_t value);
 };

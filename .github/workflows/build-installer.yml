@@ -47,6 +47,9 @@ jobs:
           git checkout "$XIAOZHI_COMMIT"
           cp -r ../firmware/walle-xiao-s3 main/boards/
           git apply ../firmware/walle-board-registration.patch
+          # self-signed certificate for the https phone console (needed for the phone mic)
+          command -v openssl >/dev/null || (apt-get update -qq && apt-get install -y -qq openssl)
+          python3 main/boards/walle-xiao-s3/tools/make_cert.py main/boards/walle-xiao-s3/chitu_cert.h
 
       - name: Build
         shell: bash

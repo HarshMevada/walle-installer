@@ -1,5 +1,5 @@
 diff --git a/main/CMakeLists.txt b/main/CMakeLists.txt
-index 45204d6..73491c2 100644
+index 45204d6..eb1f21d 100644
 --- a/main/CMakeLists.txt
 +++ b/main/CMakeLists.txt
 @@ -801,6 +801,10 @@ elseif(CONFIG_BOARD_TYPE_SEEED_STUDIO_SENSECAP_WATCHER)
@@ -13,6 +13,17 @@ index 45204d6..73491c2 100644
  elseif(CONFIG_BOARD_TYPE_SEEED_XIAO_ESP32S3_RESPEAKER_XVF3800)
      set(BOARD_DIR "seeed/xiao-esp32s3-respeaker-xvf3800")
      set(BUILTIN_TEXT_FONT font_noto_sans_basic_14_1)
+@@ -1198,6 +1202,10 @@ endif()
+ if(IDF_TARGET STREQUAL "esp32s3")
+     list(APPEND MAIN_PRIV_REQUIRES_EXTRA esp_driver_usb_serial_jtag)
+ endif()
++# Chitu robot: https phone console (microphone access needs a secure page)
++if(CONFIG_BOARD_TYPE_WALLE_XIAO_S3)
++    list(APPEND MAIN_PRIV_REQUIRES_EXTRA esp_https_server esp_http_server)
++endif()
+ idf_component_register(SRCS ${SOURCES}
+                     EMBED_FILES ${LANG_SOUNDS} ${COMMON_SOUNDS}
+                     INCLUDE_DIRS ${INCLUDE_DIRS}
 diff --git a/main/Kconfig.projbuild b/main/Kconfig.projbuild
 index 80161a1..4177261 100644
 --- a/main/Kconfig.projbuild

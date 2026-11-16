@@ -2,15 +2,18 @@
 #include "wifi_board.h"
 #include "codecs/no_audio_codec.h"
 #include "application.h"
+#include "assets/lang_config.h"
 #include "button.h"
 #include "config.h"
 #include "audio_diag.h"
+#include "remote_audio.h"
 #include "device_state_machine.h"
 #include "chitu_camera.h"
 #include "led/gpio_led.h"
 #include "mcp_server.h"
 #include "motor_controller.h"
 #include "obstacle_sensor.h"
+#include "pet_mode.h"
 #include "web_console.h"
 #if WALLE_EYES_STYLE == 1
 #include "walle_gif_eyes_display.h"
@@ -28,6 +31,7 @@ using WallEEyesDisplay = WallEDrawnEyesDisplay;
 #include <esp_wifi.h>
 
 #include <cmath>
+#include <cstring>
 #include <vector>
 #include <esp_lcd_panel_ops.h>
 #include <esp_lcd_panel_vendor.h>
@@ -70,6 +74,7 @@ public:
             win_sum_sq_ += (int64_t)dest[i] * dest[i];
         }
         win_samples_ += n;
+        RouteRemoteMic(dest, n);
         if (win_samples_ >= input_sample_rate_) {  // publish about once per second
             audio_diag::mic_rms = (int)sqrt((double)win_sum_sq_ / win_samples_);
             audio_diag::mic_peak = win_peak_;
@@ -85,7 +90,40 @@ public:
     }
 
 protected:
+    // Phone console audio: the phone mic replaces the robot mic while it is streaming;
+    // otherwise the room sound can be sent to the phone.
+    void RouteRemoteMic(int16_t* dest, int n) {
+        if (remote_audio::PhoneMicActive()) {
+            size_t want = (size_t)n * sizeof(int16_t);
+            // small jitter cushion: after running dry, wait for ~120 ms of audio
+            if (phone_starved_ && remote_audio::phone_mic.Available() < 1920 * sizeof(int16_t)) {
+                memset(dest, 0, want);
+                return;
+            }
+            size_t got = remote_audio::phone_mic.Pop(dest, want);
+            if (got < want) {
+                memset(reinterpret_cast<uint8_t*>(dest) + got, 0, want - got);
+                phone_starved_ = true;
+            } else {
+                phone_starved_ = false;
+            }
+        } else {
+            phone_starved_ = true;
+            if (remote_audio::room_listen) {
+                remote_audio::room_out.Push(dest, (size_t)n * sizeof(int16_t));
+            }
+        }
+    }
+
     int Write(const int16_t* data, int samples) override {
+        if (remote_audio::phone_listen) {
+            remote_audio::voice_out.Push(data, (size_t)samples * sizeof(int16_t));
+            if (!remote_audio::robot_speaker) {
+                // keep the I2S timing (it paces playback) but stay silent on the robot
+                boosted_.assign(samples, 0);
+                return NoAudioCodecSimplexPdm::Write(boosted_.data(), samples);
+            }
+        }
         int peak = 1;
         for (int i = 0; i < samples; i++) {
             int a = abs((int)data[i]);
@@ -118,6 +156,7 @@ private:
     int64_t win_dc_sum_ = 0;
     float hp_prev_x_ = 0.0f;
     float hp_prev_y_ = 0.0f;
+    bool phone_starved_ = true;
 };
 
 class WallEXiaoS3Board : public WifiBoard {
@@ -131,6 +170,7 @@ private:
     MotorController motors_;
     ObstacleSensor obstacle_;
     WebConsole web_;
+    PetMode pet_;
     Button boot_button_;
     esp_timer_handle_t wifi_retry_timer_ = nullptr;
     esp_timer_handle_t diag_timer_ = nullptr;
@@ -324,6 +364,7 @@ private:
             }
         });
         motors_.RegisterMcpTools();
+        pet_.RegisterMcpTools();
         McpServer::GetInstance().AddTool(
             "self.chitu.get_web_console",
             "Get the web address of Chitu's phone control page (live camera, drive buttons, "
@@ -348,7 +389,25 @@ private:
         if (web_.running()) {
             return;
         }
-        web_.Start(&motors_, GetAudioCodec());
+        web_.SetMessageHandler([this](const std::string& text, bool say_it) {
+#if WALLE_EYES_STYLE == 0
+            if (eyes_ != nullptr) {
+                eyes_->ShowMessage(text, 8);
+            }
+#else
+            if (display_ != nullptr) {
+                display_->ShowNotification(text, 8000);
+            }
+#endif
+            auto& app = Application::GetInstance();
+            if (say_it) {
+                app.WakeWordInvoke("(Someone sent you this message from the phone app: \"" + text +
+                                   "\". Read it out loud, then react to it in one short sentence.)");
+            } else if (app.GetDeviceState() == kDeviceStateIdle) {
+                app.PlaySound(Lang::Sounds::OGG_POPUP);
+            }
+        });
+        web_.Start(&motors_, GetAudioCodec(), &pet_);
         std::string url = web_.Url();
         if (!url.empty() && display_ != nullptr) {
             display_->ShowNotification(url, 15000);
@@ -376,6 +435,12 @@ public:
         InitializeCamera();
         InitializeButtons();
         StartDiagnostics();
+        pet_.Start(
+            &motors_, display_,
+            [this](float x, float y) {
+                if (eyes_ != nullptr) eyes_->LookAt(x, y);
+            },
+            [this]() { return web_.RecentlyUsed(); });
         ESP_LOGI(TAG, "Wall-E board initialized");
     }
 
